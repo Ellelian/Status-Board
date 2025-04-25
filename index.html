@@ -1,56 +1,151 @@
-<!DOCTYPE html><html lang="en">
+<!DOCTYPE html>
+<html lang="fr">
 <head>
-<meta charset="UTF-8"><title>SaaS Status Board</title>
-<style>
-  body{font-family:sans-serif;background:#f5f5f5;margin:0;padding:2rem}
-  #grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
-  .card{padding:1rem;border-radius:12px;background:#fff;box-shadow:0 2px 6px #0002}
-  .none{border-left:8px solid #4caf50}
-  .minor{border-left:8px solid #ff9800}
-  .major,.critical{border-left:8px solid #f44336}
-  .nostatus{border-left:8px solid #9e9e9e}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SaaS Status Board</title>
+  <style>
+    :root {
+      --card-radius: 14px;
+      --shadow: 0 2px 6px #0002;
+      --bg: #f4f4f6;
+      --ok: #4caf50;
+      --minor: #ff9800;
+      --major: #f44336;
+      --text: #111;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2rem;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 2.2rem;
+    }
+    #timestamp {
+      margin-bottom: 1.5rem;
+      font-size: .9rem;
+      color: #555;
+    }
+    #grid {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    }
+    .card {
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--shadow);
+      padding: 1rem 1.2rem;
+      text-decoration: none;
+      display: flex;
+      flex-direction: column;
+      gap: .35rem;
+      transition: transform .15s;
+    }
+    .card:hover { transform: translateY(-2px); }
+    .card.ok     { border-left: 8px solid var(--ok); }
+    .card.minor  { border-left: 8px solid var(--minor); }
+    .card.major  { border-left: 8px solid var(--major); }
+    .service-name { font-weight: 600; text-transform: capitalize; }
+    .status-row { display: flex; align-items: center; gap: .4rem; }
+    .icon { font-size: 1.1rem; }
+    .incident-title { font-size: .85rem; color: #333; line-height: 1.2; }
+  </style>
 </head>
 <body>
-<h1>Status en direct</h1>
-<div id="grid">Chargement…</div>
+  <h1>Status en direct</h1>
+  <div id="timestamp">Chargement…</div>
+  <div id="grid"></div>
+
 <script>
-const pages={
-  activecampaign:'https://status.activecampaign.com/api/v2/status.json',
-  webinarjam    :'https://status.webinarjam.com/api/v2/status.json',
-  twilio        :'https://status.twilio.com/api/v2/status.json',
-  manychat      :'https://status.manychat.com/api/v2/status.json',
-  make          :'https://status.make.com/api/v2/status.json',
-  clickfunnels  :'https://status.clickfunnels.com/api/v2/status.json',
-  typeform      :'https://status.typeform.com/api/v2/status.json',
-  calendly      :'https://www.calendlystatus.com/api/v2/status.json',
-  gworkspace    :'https://www.google.com/appsstatus/dashboard/incidents.json',
-  gcloud        :'https://status.cloud.google.com/incidents.json',
-  prestashop    :'https://status.prestashop.com'           // simple ping
+// =============== CONFIG ===============
+const pages = {
+  activecampaign: { api:'https://status.activecampaign.com/api/v2/status.json', link:'https://status.activecampaign.com' },
+  webinarjam    : { api:'https://status.webinarjam.com/api/v2/status.json',     link:'https://status.webinarjam.com' },
+  twilio        : { api:'https://status.twilio.com/api/v2/status.json',       link:'https://status.twilio.com' },
+  manychat      : { api:'https://status.manychat.com/api/v2/status.json',     link:'https://status.manychat.com' },
+  make          : { api:'https://status.make.com/api/v2/status.json',         link:'https://status.make.com' },
+  clickfunnels  : { api:'https://status.clickfunnels.com/api/v2/status.json', link:'https://status.clickfunnels.com' },
+  typeform      : { api:'https://status.typeform.com/api/v2/status.json',     link:'https://status.typeform.com' },
+  calendly      : { api:'https://www.calendlystatus.com/api/v2/status.json',  link:'https://www.calendlystatus.com' },
+  gworkspace    : { api:'https://www.google.com/appsstatus/dashboard/incidents.json', link:'https://www.google.com/appsstatus/dashboard' },
+  gcloud        : { api:'https://status.cloud.google.com/incidents.json',     link:'https://status.cloud.google.com' },
+  prestashop    : { api:'https://status.prestashop.com',                      link:'https://status.prestashop.com', ping:true }
 };
-async function getIndicator(name,url){
+const cors = url => `https://corsproxy.io/?${encodeURIComponent(url)}`;
+// ============= UTILS =============
+function mapStatus(ind) {
+  if(!ind || ind==='none')   return {cls:'ok',    label:'ok',    icon:'✅'};
+  if(ind==='minor')          return {cls:'minor', label:'incident', icon:'⚠️'};
+  if(['major','critical'].includes(ind)) return {cls:'major', label:'incident', icon:'❌'};
+  return {cls:'minor', label:ind, icon:'❓'};
+}
+function timeAgo(d){
+  const diff=Math.floor((Date.now()-d)/1000);
+  if(diff<60) return `${diff}s`;
+  const m=Math.floor(diff/60);
+  if(m<60) return `${m} min`;
+  const h=Math.floor(m/60);
+  return `${h} h`;
+}
+// =============== STATE ===============
+let previous = {}; // service -> cls
+let firstRun = true;
+// ============== NOTIFS ==============
+function mayNotify(name, cls){
+  if(Notification.permission!=='granted') return;
+  if(firstRun) return; // éviter un spam au chargement
+  const before = previous[name];
+  if(before!==undefined && before!==cls && cls!=='ok'){
+    new Notification(`${name}: ${cls.toUpperCase()}`);
+  }
+}
+// =============== RENDER ===============
+async function fetchStatus(name, cfg){
   try{
-    if(name==='prestashop'){
-      const r=await fetch('https://corsproxy.io/?'+encodeURIComponent(url));
-      return r.ok?'none':'major';
+    if(cfg.ping){
+      const r = await fetch(cors(cfg.api), {mode:'cors'});
+      return r.ok ? {indicator:'none'} : {indicator:'major'};
     }
-    const r=await fetch('https://corsproxy.io/?'+encodeURIComponent(url));
-    const data=await r.json();
-    if(Array.isArray(data)){            // Google feeds → incidents array
-      return data.length? 'major':'none';
+    // Google JSON renvoie un tableau d'incidents
+    if(name==='gworkspace' || name==='gcloud'){
+      const data = await fetch(cors(cfg.api)).then(r=>r.json());
+      return {indicator: data.length ? 'major':'none'};
     }
-    return (data.status?.indicator)||'nostatus';
-  }catch(e){return'nostatus';}
+    const data = await fetch(cors(cfg.api)).then(r=>r.json());
+    return {indicator: data.status?.indicator || 'none', title: data?.status?.description||''};
+  }catch(e){
+    return {indicator:'major'}; // unreachable => treat as out
+  }
 }
 async function refresh(){
   const grid=document.getElementById('grid');
   grid.innerHTML='';
-  for(const [n,u] of Object.entries(pages)){
-    const st=await getIndicator(n,u);
-    grid.insertAdjacentHTML('beforeend',
-      `<div class="card ${st}"><b>${n}</b><br>${st}</div>`);
+  for(const [name,cfg] of Object.entries(pages)){
+    const {indicator,title=''} = await fetchStatus(name,cfg);
+    const {cls,label,icon} = mapStatus(indicator);
+    mayNotify(name,cls);
+    previous[name]=cls;
+    const html=`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener">
+      <span class="service-name">${name}</span>
+      <div class="status-row"><span class="icon">${icon}</span>${label}</div>
+      ${title?`<div class="incident-title">${title}</div>`:''}
+    </a>`;
+    grid.insertAdjacentHTML('beforeend',html);
   }
+  document.getElementById('timestamp').textContent = `Mis à jour il y a ${timeAgo(Date.now())}`;
+  firstRun=false;
 }
-refresh();setInterval(refresh,60000);
+// ============ INIT ============
+if(Notification.permission==='default'){
+  Notification.requestPermission();
+}
+refresh();
+setInterval(refresh, 60000); // 1 min
 </script>
-</body></html>
+</body>
+</html>
