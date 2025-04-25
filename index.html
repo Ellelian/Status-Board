@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>SaaS Status Board</title>
 <style>
-  :root{
-    --card-radius:14px;--shadow:0 2px 6px #0002;--bg:#f4f4f6;
-    --ok:#4caf50;--minor:#ff9800;--major:#f44336;--text:#111}
+  :root{--card-radius:14px;--shadow:0 2px 6px #0002;--bg:#f4f4f6;--ok:#4caf50;--minor:#ff9800;--major:#f44336;--text:#111}
   body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:2rem}
   h1{margin-top:0;font-size:2.2rem}
   #timestamp{margin-bottom:1.5rem;font-size:.9rem;color:#555}
@@ -28,12 +26,12 @@
 <div id="timestamp">Chargement…</div>
 <div id="grid"></div>
 <script>
-/**************** CONFIG ****************/ 
+/******** CONFIG ********/ 
 const pages={
   activecampaign:{api:'https://status.activecampaign.com/api/v2/summary.json',link:'https://status.activecampaign.com'},
   webinarjam    :{api:'https://status.webinarjam.com/api/v2/summary.json',link:'https://status.webinarjam.com'},
   twilio        :{api:'https://status.twilio.com/api/v2/summary.json',link:'https://status.twilio.com'},
-  manychat      :{api:'https://status.manychat.com/api/v2/summary.json',link:'https://status.manychat.com'},
+  manychat      :{api:'https://status.manychat.com/summary.json',link:'https://status.manychat.com',instatus:true},
   make          :{api:'https://status.make.com/api/v2/summary.json',link:'https://status.make.com'},
   clickfunnels  :{api:'https://status.clickfunnels.com/api/v2/summary.json',link:'https://status.clickfunnels.com'},
   typeform      :{api:'https://status.typeform.com/api/v2/summary.json',link:'https://status.typeform.com'},
@@ -43,70 +41,52 @@ const pages={
 };
 const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
 
-/*************** HELPERS ***************/
+/******** HELPERS ********/
 const okWords=['none','ok','operational','nostatus'];
-const minorWords=['minor','maintenance','degraded_performance','partial_outage','warning'];
-const majorWords=['major','critical','major_outage'];
+const minorWords=['minor','maintenance','degraded_performance','partial_outage','warning','partial'];
+const majorWords=['major','critical','major_outage','majoroutage'];
+const closedWords=['resolved','completed','closed','fixed'];
 function normalize(x){return (x||'').toString().toLowerCase();}
-function map(ind){const n=normalize(ind);
-  if(okWords.includes(n))return{cls:'ok',lab:'ok',ico:'✅'};
-  if(minorWords.includes(n))return{cls:'minor',lab:'incident',ico:'⚠️'};
-  if(majorWords.includes(n))return{cls:'major',lab:'incident',ico:'❌'};
-  return{cls:'minor',lab:n||'unknown',ico:'❓'};}
+function map(ind){const n=normalize(ind);if(okWords.includes(n))return{cls:'ok',lab:'ok',ico:'✅'};if(minorWords.includes(n))return{cls:'minor',lab:'incident',ico:'⚠️'};if(majorWords.includes(n))return{cls:'major',lab:'incident',ico:'❌'};return{cls:'minor',lab:n||'unknown',ico:'❓'};}
 function ago(t){const s=Math.floor((Date.now()-t)/1000);if(s<60)return s+'s';const m=Math.floor(s/60);if(m<60)return m+' min';return Math.floor(m/60)+' h';}
 
-/*************** NOTIFY ***************/
-let prev={},first=true;
-function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
+/******** NOTIFY ********/
+let prev={},first=true;function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
 
-/*************** FETCH ***************/
-async function get(name,cfg){
-  try{
-    if(cfg.google){
-      const r=await fetch(cors(cfg.api));
-      if(r.status===404)return{ind:'ok'};
-      const arr=await r.json();return{ind:arr.length?'minor':'ok'};
-    }
+/******** FETCH ********/
+async function get(name,cfg){try{
+    /* Google Workspace / Cloud */
+    if(cfg.google){const r=await fetch(cors(cfg.api));if(r.status===404)return{ind:'ok'};const arr=await r.json();return{ind:arr.length?'minor':'ok'};}
+
     const data=await fetch(cfg.cors?cors(cfg.api):cfg.api).then(r=>r.json());
-    let ind=data.status?.indicator||'ok';
+    let ind=data.status?.indicator||data.page?.status||'ok';
     let title=data.status?.description||'';
 
-    /* 1) Components check (Atlassian) */
+    /* Instatus activeIncidents */
+    if(data.activeIncidents&&data.activeIncidents.length){
+        const active=data.activeIncidents.find(i=>!closedWords.includes(normalize(i.status)));
+        if(active){const impact=normalize(active.impact||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title;}
+    }
+
+    /* Atlassian components check */
     if(ind==='none'&&Array.isArray(data.components)){
       const bad=data.components.find(c=>minorWords.concat(majorWords).includes(normalize(c.status)));
       if(bad){ind=minorWords.includes(normalize(bad.status))?'minor':'major';title=bad.name;}
     }
 
-    /* 2) Active incidents (Statuspage/Instatus) */
+    /* Atlassian incidents */
     if(Array.isArray(data.incidents)){
-      const active=data.incidents.find(i=>!['resolved','completed','closed'].includes(normalize(i.status||i.state)));
-      if(active){
-        const impact=normalize(active.impact||active.severity||'minor');
-        ind=majorWords.includes(impact)?'major':'minor';
-        title=active.name||title||active.title||'';
-      }
+      const active=data.incidents.find(i=>!closedWords.includes(normalize(i.status||i.state)));
+      if(active){const impact=normalize(active.impact||active.severity||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title||active.title||'';}
     }
 
     return{ind,title};
-  }catch(e){return{ind:'major',title:'API error'}};
-}
+  }catch(e){return{ind:'major',title:'API error'}};}
 
-/*************** RENDER ***************/
+/******** RENDER ********/
 const grid=document.getElementById('grid');
-async function refresh(){
-  grid.innerHTML='';
-  for(const[k,cfg]of Object.entries(pages)){
-    const {ind,title=''}=await get(k,cfg);
-    const {cls,lab,ico}=map(ind);
-    notify(k,cls);
-    const extra=title&&cls!=='ok'?`<div class="incident-title">${title}</div>`:'';
-    grid.insertAdjacentHTML('beforeend',`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener"><span class="service-name">${k}</span><div class="status-row"><span class="icon">${ico}</span>${lab}</div>${extra}</a>`);
-  }
-  document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());
-  first=false;
-}
-if(Notification.permission==='default')Notification.requestPermission();
-refresh();setInterval(refresh,60000);
+async function refresh(){grid.innerHTML='';for(const[k,cfg]of Object.entries(pages)){const {ind,title=''}=await get(k,cfg);const {cls,lab,ico}=map(ind);notify(k,cls);const extra=title&&cls!=='ok'?`<div class="incident-title">${title}</div>`:'';grid.insertAdjacentHTML('beforeend',`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener"><span class="service-name">${k}</span><div class="status-row"><span class="icon">${ico}</span>${lab}</div>${extra}</a>`);}document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());first=false;}
+if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,60000);
 </script>
 </body>
 </html>
