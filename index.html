@@ -1,40 +1,34 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>SaaS Status Board</title>
-  <style>
-    :root {
-      --card-radius: 14px;
-      --shadow: 0 2px 6px #0002;
-      --bg: #f4f4f6;
-      --ok: #4caf50;
-      --minor: #ff9800;
-      --major: #f44336;
-      --text: #111;
-    }
-    body {margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:2rem;}
-    h1{margin-top:0;font-size:2.2rem;}
-    #timestamp{margin-bottom:1.5rem;font-size:.9rem;color:#555;}
-    #grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));}
-    .card{background:#fff;border-radius:var(--card-radius);box-shadow:var(--shadow);padding:1rem 1.2rem;text-decoration:none;display:flex;flex-direction:column;gap:.35rem;transition:transform .15s;}
-    .card:hover{transform:translateY(-2px);}  
-    .card.ok{border-left:8px solid var(--ok);}  
-    .card.minor{border-left:8px solid var(--minor);}  
-    .card.major{border-left:8px solid var(--major);}  
-    .service-name{font-weight:600;text-transform:capitalize;}
-    .status-row{display:flex;align-items:center;gap:.4rem;}
-    .icon{font-size:1.1rem;}
-    .incident-title{font-size:.85rem;color:#333;line-height:1.2;}
-  </style>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>SaaS Status Board</title>
+<style>
+  :root{
+    --card-radius:14px;--shadow:0 2px 6px #0002;--bg:#f4f4f6;
+    --ok:#4caf50;--minor:#ff9800;--major:#f44336;--text:#111}
+  body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:2rem}
+  h1{margin-top:0;font-size:2.2rem}
+  #timestamp{margin-bottom:1.5rem;font-size:.9rem;color:#555}
+  #grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+  .card{background:#fff;border-radius:var(--card-radius);box-shadow:var(--shadow);padding:1rem 1.2rem;text-decoration:none;display:flex;flex-direction:column;gap:.35rem;transition:transform .15s}
+  .card:hover{transform:translateY(-2px)}
+  .card.ok{border-left:8px solid var(--ok)}
+  .card.minor{border-left:8px solid var(--minor)}
+  .card.major{border-left:8px solid var(--major)}
+  .service-name{font-weight:600;text-transform:capitalize}
+  .status-row{display:flex;align-items:center;gap:.4rem}
+  .icon{font-size:1.1rem}
+  .incident-title{font-size:.85rem;color:#333;line-height:1.2}
+</style>
 </head>
 <body>
-  <h1>Status en direct</h1>
-  <div id="timestamp">Chargement…</div>
-  <div id="grid"></div>
+<h1>Status en direct</h1>
+<div id="timestamp">Chargement…</div>
+<div id="grid"></div>
 <script>
-/* ===================== CONFIG ===================== */
+/* === CONFIG === */
 const pages={
   activecampaign:{api:'https://status.activecampaign.com/api/v2/summary.json',link:'https://status.activecampaign.com'},
   webinarjam    :{api:'https://status.webinarjam.com/api/v2/summary.json',link:'https://status.webinarjam.com'},
@@ -44,60 +38,63 @@ const pages={
   clickfunnels  :{api:'https://status.clickfunnels.com/api/v2/summary.json',link:'https://status.clickfunnels.com'},
   typeform      :{api:'https://status.typeform.com/api/v2/summary.json',link:'https://status.typeform.com'},
   calendly      :{api:'https://www.calendlystatus.com/api/v2/summary.json',link:'https://www.calendlystatus.com'},
-  gworkspace    :{api:'https://www.google.com/appsstatus/dashboard/incidents.json',link:'https://www.google.com/appsstatus/dashboard',cors:true},
-  gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true},
+  gworkspace    :{api:'https://www.google.com/appsstatus/dashboard/incidents.json',link:'https://www.google.com/appsstatus/dashboard',cors:true,google:true},
+  gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true,google:true},
   prestashop    :{api:'https://status.prestashop.com',link:'https://status.prestashop.com',ping:true}
 };
-const cors=url=>`https://corsproxy.io/?${encodeURIComponent(url)}`;
+const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
 
-/* ===================== HELPERS ===================== */
-function normalize(ind){return (ind||'').toString().toLowerCase();}
-function mapStatus(ind){
-  const n=normalize(ind);
-  if(['none','ok','operational','nostatus'].includes(n)) return {cls:'ok',label:'ok',icon:'✅'};
-  if(['minor','maintenance','degraded_performance','partial_outage'].includes(n)) return {cls:'minor',label:'incident',icon:'⚠️'};
-  if(['major','critical','major_outage'].includes(n)) return {cls:'major',label:'incident',icon:'❌'};
-  return {cls:'minor',label:n||'unknown',icon:'❓'};
-}
-function timeAgo(ts){const diff=Math.floor((Date.now()-ts)/1000);if(diff<60)return`${diff}s`;const m=Math.floor(diff/60);if(m<60)return`${m} min`;const h=Math.floor(m/60);return`${h} h`;}
+/* === HELPERS === */
+const okWords=['none','ok','operational','nostatus'];
+const minorWords=['minor','maintenance','degraded_performance','partial_outage'];
+const majorWords=['major','critical','major_outage'];
+function normalize(x){return (x||'').toString().toLowerCase();}
+function map(ind){const n=normalize(ind);
+  if(okWords.includes(n))return{cls:'ok',lab:'ok',ico:'✅'};
+  if(minorWords.includes(n))return{cls:'minor',lab:'incident',ico:'⚠️'};
+  if(majorWords.includes(n))return{cls:'major',lab:'incident',ico:'❌'};
+  return{cls:'minor',lab:n||'unknown',ico:'❓'};}
+function ago(t){const s=Math.floor((Date.now()-t)/1000);if(s<60)return s+'s';const m=Math.floor(s/60);if(m<60)return m+' min';return Math.floor(m/60)+' h';}
 
-/* ===================== NOTIFS ===================== */
-let prevStatus={};let firstRun=true;
-function tryNotify(name,cls){if(Notification.permission!=='granted'||firstRun)return;const before=prevStatus[name];if(before&&before!==cls&&cls!=='ok'){new Notification(`${name}: ${cls}`);}prevStatus[name]=cls;}
+/* === NOTIFY === */
+let prev={},first=true;
+function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
 
-/* ===================== FETCH ===================== */
-async function getStatus(name,cfg){
+/* === FETCH === */
+async function get(name,cfg){
   try{
-    if(cfg.ping){const r=await fetch(cors(cfg.api));return r.ok?{indicator:'ok'}:{indicator:'major'};}
-    if(name==='gworkspace'||name==='gcloud'){
-      const arr=await fetch(cors(cfg.api)).then(r=>r.json());return {indicator:arr.length?'major':'ok'};
-    }
+    if(cfg.ping){const r=await fetch(cors(cfg.api));return r.ok?{ind:'ok'}:{ind:'major'};}
+    if(cfg.google){ // if 404 we assume ok (empty list) ; google returns 404 when no incidents
+      const r=await fetch(cors(cfg.api));
+      if(r.status===404)return{ind:'ok'};
+      const arr=await r.json();return{ind:arr.length?'minor':'ok'};}
     const data=await fetch(cfg.cors?cors(cfg.api):cfg.api).then(r=>r.json());
-    return {indicator:data.status?.indicator||'ok',title:data.status?.description||''};
-  }catch{ return {indicator:'major'}; }
+    let ind=data.status?.indicator||'ok';
+    if(ind==='none'&&Array.isArray(data.components)){
+      const bad=data.components.find(c=>minorWords.concat(majorWords).includes(normalize(c.status)));
+      if(bad)ind=minorWords.includes(normalize(bad.status))?'minor':'major';
+    }
+    const title=data.incidents?.[0]?.name||data.status?.description||'';
+    return{ind,title};
+  }catch(e){return{ind:'major'};}
 }
 
-/* ===================== RENDER ===================== */
+/* === RENDER === */
 const grid=document.getElementById('grid');
 async function refresh(){
   grid.innerHTML='';
-  for(const [name,cfg]of Object.entries(pages)){
-    const {indicator,title=''}=await getStatus(name,cfg);
-    const {cls,label,icon}=mapStatus(indicator);
-    tryNotify(name,cls);
-    const html=`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener">
-                  <span class="service-name">${name}</span>
-                  <div class="status-row"><span class="icon">${icon}</span>${label}</div>
-                  ${title&&!['ok','operational','none'].includes(normalize(indicator))?`<div class="incident-title">${title}</div>`:''}
-                </a>`;
-    grid.insertAdjacentHTML('beforeend',html);
+  for(const[k,cfg]of Object.entries(pages)){
+    const {ind,title=''}=await get(k,cfg);
+    const {cls,lab,ico}=map(ind);
+    notify(k,cls);
+    const extra=title&&cls!=='ok'?`<div class="incident-title">${title}</div>`:'';
+    grid.insertAdjacentHTML('beforeend',`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener"><span class="service-name">${k}</span><div class="status-row"><span class="icon">${ico}</span>${lab}</div>${extra}</a>`);
   }
-  document.getElementById('timestamp').textContent=`Mis à jour il y a ${timeAgo(Date.now())}`;
-  firstRun=false;
+  document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());
+  first=false;
 }
-if(Notification.permission==='default'){Notification.requestPermission();}
-refresh();
-setInterval(refresh,60000);
+if(Notification.permission==='default')Notification.requestPermission();
+refresh();setInterval(refresh,60000);
 </script>
 </body>
 </html>
