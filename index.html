@@ -40,7 +40,7 @@ const pages={
   gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true,google:true},
   webflow       :{api:'https://status.webflow.com/api/v2/summary.json',link:'https://status.webflow.com'},
   notion        :{api:'https://status.notion.so/api/v2/summary.json',link:'https://status.notion.so'},
-  gohighlevel   :{api:'https://status.gohighlevel.com/api/v2/summary.json',link:'https://status.gohighlevel.com',cors:true},
+  gohighlevel   :{api:'https://status.gohighlevel.com',link:'https://status.gohighlevel.com',ping:true},
   zapier        :{api:'https://status.zapier.com/api/v2/summary.json',link:'https://status.zapier.com'}
 };
 const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
@@ -59,9 +59,18 @@ let prev={},first=true;function notify(name,cls){if(Notification.permission!=='g
 
 /******** FETCH ********/
 async function get(name,cfg){try{
-    /* Google Workspace / Cloud */
-    if(cfg.google){const r=await fetch(cors(cfg.api));if(r.status===404)return{ind:'ok'};const arr=await r.json();return{ind:arr.length?'minor':'ok'};}
-
+    /* 1. Ping-only */
+    if(cfg.ping){
+      const ok=await fetch(cors(cfg.api)).then(r=>r.ok).catch(()=>false);
+      return {ind: ok?'ok':'major'};
+    }
+    
+    /* 2. Google Workspace/Cloud special */
+    if(cfg.google){
+      const r=await fetch(cors(cfg.api));
+      if(r.status===404)return{ind:'ok'};const arr=await r.json();return{ind:arr.length?'minor':'ok'};}
+    
+    /* 3. Standard fetch (with optional CORS proxy) */
     const data=await fetch(cfg.cors?cors(cfg.api):cfg.api).then(r=>r.json());
     let ind=data.status?.indicator||data.page?.status||'ok';
     let title=data.status?.description||'';
@@ -70,7 +79,7 @@ async function get(name,cfg){try{
     if(data.activeIncidents&&data.activeIncidents.length){
         const active=data.activeIncidents.find(i=>!closedWords.includes(normalize(i.status)));
         if(active){const impact=normalize(active.impact||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title;}
-    }
+    }    
 
     /* Atlassian components check */
     if(ind==='none'&&Array.isArray(data.components)){
