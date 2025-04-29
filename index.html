@@ -62,12 +62,22 @@ let prev={},first=true;function notify(name,cls){if(Notification.permission!=='g
 async function get(name,cfg){try{
 
   // 0. Pulsetic overall
-    if (cfg.pulsetic) {
-      const j = await fetch(cfg.api, { method: 'POST' }).then(r => r.json());
-      const map = { operational:'ok', degraded:'minor', outage:'major' };
-      return { ind: map[j.status] || 'minor',
-               title: j.status === 'operational' ? '' : (j.status || '') };
-    }
+  if (cfg.pulsetic) {
+    const j = await fetch(cfg.api, { method:'POST' }).then(r=>r.json());
+  
+    // 2-a le champ global
+    const map = { operational:'ok', degraded:'minor', outage:'major' };
+    let ind   = map[j.status] || 'ok';
+  
+    // 2-b incidents actifs ?  → au moins ‘minor’
+    const active = Array.isArray(j.incidents) &&
+                   j.incidents.some(i => i.status !== 'resolved');
+    if (active && ind === 'ok') ind = 'minor';
+  
+    return { ind,
+             title: ind==='ok' ? '' : (j.status || 'incident') };
+  }
+
 
     if (cfg.ping) {
       const ok = await fetch(cfg.api, { mode: 'no-cors' })  // plus de corsproxy
