@@ -59,10 +59,12 @@ let prev={},first=true;function notify(name,cls){if(Notification.permission!=='g
 
 /******** FETCH ********/
 async function get(name,cfg){try{
-    /* 1. Ping-only */
-    if(cfg.ping){
-      const ok=await fetch(cors(cfg.api)).then(r=>r.ok).catch(()=>false);
-      return {ind: ok?'ok':'major'};
+
+    if (cfg.ping) {
+      const ok = await fetch(cfg.api, { mode: 'no-cors' })  // plus de corsproxy
+                    .then(() => true)    // résolu ⇒ page accessible
+                    .catch(() => false); // échec réseau ⇒ panne
+      return { ind: ok ? 'ok' : 'major' };
     }
     
     /* 2. Google Workspace/Cloud special */
