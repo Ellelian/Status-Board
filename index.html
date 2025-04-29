@@ -86,7 +86,19 @@ async function get(name,cfg){try{
 
 /******** RENDER ********/
 const grid=document.getElementById('grid');
-async function refresh(){grid.innerHTML='';for(const[k,cfg]of Object.entries(pages)){const {ind,title=''}=await get(k,cfg);const {cls,lab,ico}=map(ind);notify(k,cls);const extra=title&&cls!=='ok'?`<div class="incident-title">${title}</div>`:'';grid.insertAdjacentHTML('beforeend',`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener"><span class="service-name">${k}</span><div class="status-row"><span class="icon">${ico}</span>${lab}</div>${extra}</a>`);}document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());first=false;}
+async function refresh(){
+  grid.innerHTML='';
+  const sortedEntries=Object.entries(pages).sort(([a],[b])=>a.localeCompare(b));
+  for(const[k,cfg]of sortedEntries){
+    const {ind,title=''}=await get(k,cfg);
+    const {cls,lab,ico}=map(ind);
+    notify(k,cls);
+    const extra=title&&cls!=='ok'?`<div class="incident-title">${title}</div>`:'';
+    grid.insertAdjacentHTML('beforeend',`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener"><span class="service-name">${k}</span><div class="status-row"><span class="icon">${ico}</span>${lab}</div>${extra}</a>`);
+  }
+  document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());
+  first=false;
+}
 if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,60000);
 </script>
 </body>
