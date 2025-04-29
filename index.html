@@ -40,7 +40,7 @@ const pages={
   gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true,google:true},
   webflow       :{api:'https://status.webflow.com/api/v2/summary.json',link:'https://status.webflow.com'},
   notion        :{api:'https://status.notion.so/api/v2/summary.json',link:'https://status.notion.so'},
-  gohighlevel2  :{api:'https://api.pulsetic.com/public/status/status.gohighlevel.com',link:'https://status.gohighlevel.com',pulsetic:true},
+  gohighlevel  :{api:'https://api.pulsetic.com/public/status/status.gohighlevel.com',link:'https://status.gohighlevel.com',pulsetic:true},
   zapier        :{api:'https://status.zapier.com/api/v2/summary.json',link:'https://status.zapier.com'}
 };
 const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
@@ -60,24 +60,35 @@ let prev={},first=true;function notify(name,cls){if(Notification.permission!=='g
 /******** FETCH ********/
 async function get(name,cfg){try{
 
-  // 0. Pulsetic overall
-  if (cfg.pulsetic) {
-    const j = await fetch(cfg.api, { method:'POST' }).then(r=>r.json());
-  
-    // 2-a le champ global
-    const map = { operational:'ok', degraded:'minor', outage:'major' };
-    let ind   = map[j.status] || 'ok';
-  
-    // 2-b incidents actifs ?  → au moins ‘minor’
-    const active = Array.isArray(j.incidents) &&
-                   j.incidents.some(i => i.status !== 'resolved');
-    if (active && ind === 'ok') ind = 'minor';
-  
-    return { ind,
-             title: ind==='ok' ? '' : (j.status || 'incident') };
-  }
+    // 0. Pulsetic overall  — version "anti-wrapper" et agrégation
+    if (cfg.pulsetic) {
+      const raw   = await fetch(cfg.api, {method:'POST'}).then(r=>r.json());
+    
+      // 1) dé-wrapper (Thunder Client / Postman)
+      const body  = Array.isArray(raw) ? raw[0]?.data ?? {} : raw;
+      const page  = body.data ?? body;         // 2e niveau éventuel
+    
+      // 2) essaie d’abord la clef simple (cas minimaliste)
+      if (page.status) {
+        const map = {operational:'ok', degraded:'minor', outage:'major'};
+        return { ind: map[page.status] || 'minor',
+                 title: page.status==='operational' ? '' : page.status };
+      }
+    
+      // 3) sinon, calcule à partir des monitors + incidents
+      const badMon  = page.monitors?.find(m => m.status !== 'online');
+      const ind     = badMon
+            ? (badMon.status === 'offline' || badMon.status === 'outage') ? 'major' : 'minor'
+            : 'ok';
+    
+      const hasOpen = page.incidents?.some(i => i.status !== 'resolved');
+      return {
+        ind : hasOpen && ind==='ok' ? 'minor' : ind,
+        title : hasOpen ? page.incidents.find(i => i.status !== 'resolved')?.title || '' : ''
+      };
+    }
 
-
+    // 1. Ping
     if (cfg.ping) {
       const ok = await fetch(cfg.api, { mode: 'no-cors' })  // plus de corsproxy
                     .then(() => true)    // résolu ⇒ page accessible
