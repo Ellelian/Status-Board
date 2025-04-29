@@ -145,7 +145,7 @@ async function refresh(){
   document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());
   first=false;
 }
-if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,60000);
+if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,300000);
 </script>
 </body>
 </html>
