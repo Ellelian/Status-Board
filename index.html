@@ -101,29 +101,28 @@ async function get(name,cfg){try{
     // 2. Pulsetic
     if (cfg.pulsetic) {
       const raw  = await fetch(cfg.api, {method:'POST'}).then(r => r.json());
-    
-      // Thunder Client retourne un tableau – on déplie
       const page = (Array.isArray(raw) ? raw[0]?.data : raw)?.data ?? raw;
     
-      /*------------------------------------------------
-       * 1. Analyse des MONITEURS
-       *------------------------------------------------*/
-      let ind   = 'ok';   // valeur par défaut
+      /* — moniteurs — */
+      let ind   = 'ok';
       let title = '';
     
-      // On cherche le pire statut observé
       const dead = page.monitors?.find(m => m.status === 'offline');
       const warn = page.monitors?.find(m => m.status !== 'online');
     
-      if (dead) { ind = 'major'; title = dead.name; }
+      if (dead)      { ind = 'major'; title = dead.name; }
       else if (warn) { ind = 'minor'; title = warn.name; }
     
-      /*------------------------------------------------
-       * 2. Complément : incident actif ➜ texte, pas couleur
-       *------------------------------------------------*/
-      if (ind === 'ok') {
-        const open = page.incidents?.find(i => i.status !== 'resolved');
-        if (open) title = open.title;          // juste l’intitulé explanatory
+      /* — incidents ouverts — */
+      const open = page.incidents?.find(i => i.status !== 'resolved');
+      if (open) {
+        const isMajor = /outage|failure|down|unavailable/i.test(open.title) ||
+                        /major|critical/i.test(open.updates?.[0]?.status || '');
+        const sev     = isMajor ? 'major' : 'minor';
+    
+        // on garde la plus “grave”
+        if (ind === 'ok' || (ind === 'minor' && sev === 'major')) ind = sev;
+        title = open.title;
       }
     
       return { ind, title };
