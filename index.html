@@ -64,36 +64,39 @@ function normalize(x){return (x||'').toString().toLowerCase();}
 function map(ind){const n=normalize(ind);if(okWords.includes(n))return{cls:'ok',lab:'ok',ico:'✅'};if(minorWords.includes(n))return{cls:'minor',lab:'incident',ico:'⚠️'};if(majorWords.includes(n))return{cls:'major',lab:'incident',ico:'❌'};return{cls:'minor',lab:n||'unknown',ico:'❓'};}
 function ago(t){const s=Math.floor((Date.now()-t)/1000);if(s<60)return s+'s';const m=Math.floor(s/60);if(m<60)return m+' min';return Math.floor(m/60)+' h';}
 
+/******** SorryApp parser (status.pipedrive.com & co) ********/
+function parseSorry(html) {
+  // a.  All-green banner  («All systems are go» ou «operational»)
+  if (/All[\s\u00a0]+systems[\s\u00a0]+(?:are[\s\u00a0]+)?(?:go|operational)/i
+      .test(html))
+      return { ind:'ok' };
+
+  // b.  Un <section class="notice notice--open …"> signale un incident actif
+  const sect = html.match(/<section[^>]*\bnotice--open\b[^>]*>([\s\S]*?)<\/section>/i);
+  if (!sect) return { ind:'ok' };           // rien d'ouvert → tout va bien
+
+  //   ▸ titre
+  const mTitle = sect[1].match(/<h3[^>]*class="notice__title"[^>]*>([^<]+)/i);
+  const title  = mTitle ? mTitle[1].trim() : '';
+
+  //   ▸ gravité : 'major' / 'critical' → rouge, sinon orange
+  const ind = /notice__state--(?:critical|major)/i.test(sect[1]) ? 'major' : 'minor';
+
+  return { ind, title };
+}
+  
 /******** NOTIFY ********/
 let prev={},first=true;function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
 
 /******** FETCH ********/
 async function get(name,cfg){try{
 
-    // 1. SorryApp (ex : Pipedrive)
+    // 1. Pages créées avec SorryApp  (ex. Pipedrive)
     if (cfg.sorry) {
-      // on lit la page (via proxy si demandé)
-      const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api)
-                          .then(r => r.text());
-    
-      /* a) — « tout va bien »
-      if (/All\s+systems\s+(are\s+)?(go|operational)/i.test(html))
-          return { ind:'ok' };
-    
-      /* b) — incident *ouvert* (section « notice--open »)               */
-      const open = html.match(
-          /<section[^>]+notice--open[\s\S]+?<h3[^>]+notice__title[^>]*>([^<]+)/i);
-    
-      if (open) {
-          const title = open[1].trim();
-          const ind   = /notice__state--critical|major/i.test(open[0])
-                        ? 'major' : 'minor';
-          return { ind, title };
+        const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api)
+                            .then(r => r.text());
+        return parseSorry(html);
       }
-    
-      /* c) — pas d’incident ouvert  ➜  OK                              */
-      return { ind:'ok' };
-    }
 
     // 2. Pulsetic
     if (cfg.pulsetic) {
