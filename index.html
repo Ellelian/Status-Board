@@ -136,6 +136,15 @@ async function get(name,cfg){try{
     return{ind,title};
   }catch(e){return{ind:'major',title:'API error'}};}
 
+/******** Horloge « il y a … » ********/
+let lastRefresh = Date.now();            // sera écrasé à chaque refresh
+
+function tick()
+{
+  document.getElementById('timestamp').textContent =
+    'Mis à jour il y a ' + ago(lastRefresh);
+}
+
 /******** RENDER (parallel, ordre conservé) ********/
 const grid = document.getElementById('grid');
 
@@ -154,12 +163,10 @@ async function refresh(){
     div.rel    = 'noopener';
     div.innerHTML = `
         <span class="service-name">${key}</span>
-        <div class="status-row"><span class="icon">⏳</span>loading…</div>`;
+        <div class="status-row"><span class="icon">⏳</span>Chargement…</div>`;
     grid.appendChild(div);
     placeholders[key] = div;                // on retient le conteneur
   }
-
-  const start = Date.now();
 
   // b. on lance les fetch en parallèle
   await Promise.all(Object.entries(pages).map(async ([key,cfg])=>{
@@ -177,13 +184,17 @@ async function refresh(){
         ${extra}`;
   }));
 
-  document.getElementById('timestamp').textContent =
-    'Mis à jour il y a '+ago(start);
+  lastRefresh = Date.now();   // mémorise le moment du refresh
+  tick();                     // affiche immédiatement
   first = false;
 }
 
-if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,300000);
+if(Notification.permission==='default')Notification.requestPermission();
 
+// démarrage
+refresh();
+setInterval(refresh, 300_000);   // on garde 5 min pour les données
+setInterval(tick,     5_000);    // mais on recalcule le compteur chaque seconde
 </script>
   
 </body>
