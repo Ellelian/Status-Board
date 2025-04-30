@@ -130,21 +130,39 @@ async function get(name,cfg){try{
     return{ind,title};
   }catch(e){return{ind:'major',title:'API error'}};}
 
-/******** RENDER ********/
+/******** RENDER (parallel) ********/
 const grid=document.getElementById('grid');
+
 async function refresh(){
   grid.innerHTML='';
-  const sortedEntries=Object.entries(pages).sort(([a],[b])=>a.localeCompare(b));
-  for(const[k,cfg]of sortedEntries){
-    const {ind,title=''}=await get(k,cfg);
-    const {cls,lab,ico}=map(ind);
-    notify(k,cls);
-    const extra=title&&cls!=='ok'?`<div class="incident-title">${title}</div>`:'';
-    grid.insertAdjacentHTML('beforeend',`<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener"><span class="service-name">${k}</span><div class="status-row"><span class="icon">${ico}</span>${lab}</div>${extra}</a>`);
-  }
-  document.getElementById('timestamp').textContent='Mis à jour il y a '+ago(Date.now());
+  const start = Date.now();
+
+  // 1. On lance toutes les requêtes en même temps
+  const sorted = Object.entries(pages).sort(([a],[b])=>a.localeCompare(b));
+
+  const promises = sorted.map(async ([key, cfg])=>{
+    const {ind, title=''} = await get(key, cfg);      // ⬅️ appel parallèle
+    const {cls, lab, ico} = map(ind);
+    notify(key, cls);
+    const extra = title && cls!=='ok'
+                  ? `<div class="incident-title">${title}</div>` : '';
+
+    // 2. Dès que la promesse se résout, on insère la tuile
+    grid.insertAdjacentHTML('beforeend',
+      `<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener">
+         <span class="service-name">${key}</span>
+         <div class="status-row"><span class="icon">${ico}</span>${lab}</div>
+         ${extra}
+       </a>`);
+  });
+
+  // 3. Quand toutes les promesses sont terminées, on met à jour le timestamp
+  await Promise.allSettled(promises);
+  document.getElementById('timestamp').textContent =
+    'Mis à jour il y a '+ago(start);
   first=false;
 }
+
 if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,300000);
 </script>
 </body>
