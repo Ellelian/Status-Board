@@ -50,7 +50,8 @@ const pages={
   zapier        :{api:'https://status.zapier.com/api/v2/summary.json',link:'https://status.zapier.com'},
   clicksend     :{api:'https://status.clicksend.com/api/v2/summary.json',link:'https://status.clicksend.com'},
   leadpages     :{api:'https://status.leadpages.com/api/v2/summary.json',link:'https://status.leadpages.com'},
-  circle        :{api:'https://status.circle.so/api/v2/summary.json',link:'https://status.circle.so'}
+  circle        :{api:'https://status.circle.so/api/v2/summary.json',link:'https://status.circle.so'},
+  pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true}
 };
 const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
 
@@ -69,7 +70,24 @@ let prev={},first=true;function notify(name,cls){if(Notification.permission!=='g
 /******** FETCH ********/
 async function get(name,cfg){try{
 
-    // 0. Pulsetic
+    // 1. SorryApp (ex : Pipedrive)
+    if (cfg.sorry) {
+      const html = await fetch(cfg.api).then(r => r.text());
+    
+      // 1. OK ?
+      if (/All systems (are )?operational/i.test(html))
+        return { ind:'ok' };
+    
+      // 2. Enquête : cherche un titre d’incident
+      const m = html.match(/<h3[^>]*class="notice__title"[^>]*>([^<]+)/i);
+      const title = m ? m[1].trim() : '';
+    
+      // 3. gravité
+      const ind = /notice__state--critical|major/i.test(html) ? 'major' : 'minor';
+      return { ind, title };
+    }
+
+    // 2. Pulsetic
     if (cfg.pulsetic) {
       const raw  = await fetch(cfg.api, {method:'POST'}).then(r => r.json());
     
@@ -100,7 +118,7 @@ async function get(name,cfg){try{
       return { ind, title };
     }
 
-    // 1. Ping
+    // 3. Ping
     if (cfg.ping) {
       const ok = await fetch(cfg.api, { mode: 'no-cors' })  // plus de corsproxy
                     .then(() => true)    // résolu ⇒ page accessible
@@ -108,12 +126,12 @@ async function get(name,cfg){try{
       return { ind: ok ? 'ok' : 'major' };
     }
     
-    /* 2. Google Workspace/Cloud special */
+    /* 4. Google Workspace/Cloud special */
     if(cfg.google){
       const r=await fetch(cors(cfg.api));
       if(r.status===404)return{ind:'ok'};const arr=await r.json();return{ind:arr.length?'minor':'ok'};}
     
-    /* 3. Standard fetch (with optional CORS proxy) */
+    /* 5. Standard fetch (with optional CORS proxy) */
     const data=await fetch(cfg.cors?cors(cfg.api):cfg.api).then(r=>r.json());
     let ind=data.status?.indicator||data.page?.status||'ok';
     let title=data.status?.description||'';
