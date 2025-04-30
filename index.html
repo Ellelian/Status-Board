@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="fr">
+  
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -21,10 +22,12 @@
   .incident-title{font-size:.85rem;color:#333;line-height:1.2}
 </style>
 </head>
+  
 <body>
 <h1>Status en direct</h1>
 <div id="timestamp">Chargement…</div>
 <div id="grid"></div>
+  
 <script>
 /******** CONFIG ********/ 
 const pages={
@@ -130,40 +133,55 @@ async function get(name,cfg){try{
     return{ind,title};
   }catch(e){return{ind:'major',title:'API error'}};}
 
-/******** RENDER (parallel) ********/
-const grid=document.getElementById('grid');
+/******** RENDER (parallel, ordre conservé) ********/
+const grid = document.getElementById('grid');
 
 async function refresh(){
-  grid.innerHTML='';
+  grid.innerHTML = '';
+
+  // a. on crée d’abord une tuile vide pour chaque service, déjà triée
+  const entries = Object.entries(pages).sort(([a],[b])=>a.localeCompare(b));
+  const placeholders = {};
+
+  for (const [key] of entries){
+    const div = document.createElement('a');
+    div.className = 'card';
+    div.href  = pages[key].link;
+    div.target = '_blank';
+    div.rel    = 'noopener';
+    div.innerHTML = `
+        <span class="service-name">${key}</span>
+        <div class="status-row"><span class="icon">⏳</span>loading…</div>`;
+    grid.appendChild(div);
+    placeholders[key] = div;                // on retient le conteneur
+  }
+
   const start = Date.now();
 
-  // 1. On lance toutes les requêtes en même temps
-  const sorted = Object.entries(pages).sort(([a],[b])=>a.localeCompare(b));
+  // b. on lance les fetch en parallèle
+  await Promise.all(Object.entries(pages).map(async ([key,cfg])=>{
+    const {ind,title=''} = await get(key,cfg);
+    const {cls,lab,ico}  = map(ind);
+    notify(key,cls);
 
-  const promises = sorted.map(async ([key, cfg])=>{
-    const {ind, title=''} = await get(key, cfg);      // ⬅️ appel parallèle
-    const {cls, lab, ico} = map(ind);
-    notify(key, cls);
     const extra = title && cls!=='ok'
                   ? `<div class="incident-title">${title}</div>` : '';
 
-    // 2. Dès que la promesse se résout, on insère la tuile
-    grid.insertAdjacentHTML('beforeend',
-      `<a class="card ${cls}" href="${cfg.link}" target="_blank" rel="noopener">
-         <span class="service-name">${key}</span>
-         <div class="status-row"><span class="icon">${ico}</span>${lab}</div>
-         ${extra}
-       </a>`);
-  });
+    placeholders[key].className = `card ${cls}`;     // couleur
+    placeholders[key].innerHTML = `
+        <span class="service-name">${key}</span>
+        <div class="status-row"><span class="icon">${ico}</span>${lab}</div>
+        ${extra}`;
+  }));
 
-  // 3. Quand toutes les promesses sont terminées, on met à jour le timestamp
-  await Promise.allSettled(promises);
   document.getElementById('timestamp').textContent =
     'Mis à jour il y a '+ago(start);
-  first=false;
+  first = false;
 }
 
 if(Notification.permission==='default')Notification.requestPermission();refresh();setInterval(refresh,300000);
+
 </script>
+  
 </body>
 </html>
