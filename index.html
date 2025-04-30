@@ -72,21 +72,28 @@ async function get(name,cfg){try{
 
     // 1. SorryApp (ex : Pipedrive)
     if (cfg.sorry) {
-      // si la fiche porte le flag cors on route la requête via le proxy
+      // on lit la page (via proxy si demandé)
       const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api)
                           .then(r => r.text());
     
-      /* 1.a — page « tout va bien »  */
-      if (/All systems (are )?(go|operational)/i.test(html))
-          return { ind:'ok' };
+      /* a) — bannière générale */
+      if (/All systems (are )?(go|operational)/i.test(html) ||
+          /meta[^>]+sorryapp:status[^>]+content="operational"/i.test(html))
+            return { ind:'ok' };
     
-      /* 1.b — premier titre d’incident actif                         */
-      const m     = html.match(/<h3[^>]*class="notice__title"[^>]*>([^<]+)/i);
-      const title = m ? m[1].trim() : '';
+      /* b) — incident *ouvert* (section « notice--open »)               */
+      const open = html.match(
+          /<section[^>]+notice--open[\s\S]+?<h3[^>]+notice__title[^>]*>([^<]+)/i);
     
-      /* 1.c — couleur : critical ⇒ major, sinon minor                */
-      const ind = /notice__state--critical|major/i.test(html) ? 'major' : 'minor';
-      return { ind, title };
+      if (open) {
+          const title = open[1].trim();
+          const ind   = /notice__state--critical|major/i.test(open[0])
+                        ? 'major' : 'minor';
+          return { ind, title };
+      }
+    
+      /* c) — pas d’incident ouvert  ➜  OK                              */
+      return { ind:'ok' };
     }
 
     // 2. Pulsetic
