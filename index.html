@@ -148,7 +148,7 @@ async function refresh(){
 
   for (const [key] of entries){
     const div = document.createElement('a');
-    div.className = 'card';
+    div.className = 'card loading';
     div.href  = pages[key].link;
     div.target = '_blank';
     div.rel    = 'noopener';
