@@ -76,10 +76,9 @@ async function get(name,cfg){try{
       const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api)
                           .then(r => r.text());
     
-      /* a) — bannière générale */
-      if (/All systems (are )?(go|operational)/i.test(html) ||
-          /meta[^>]+sorryapp:status[^>]+content="operational"/i.test(html))
-            return { ind:'ok' };
+      /* a) — « tout va bien »
+      if (/All\s+systems\s+(are\s+)?(go|operational)/i.test(html))
+          return { ind:'ok' };
     
       /* b) — incident *ouvert* (section « notice--open »)               */
       const open = html.match(
