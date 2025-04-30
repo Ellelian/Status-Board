@@ -51,7 +51,7 @@ const pages={
   clicksend     :{api:'https://status.clicksend.com/api/v2/summary.json',link:'https://status.clicksend.com'},
   leadpages     :{api:'https://status.leadpages.com/api/v2/summary.json',link:'https://status.leadpages.com'},
   circle        :{api:'https://status.circle.so/api/v2/summary.json',link:'https://status.circle.so'},
-  pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true}
+  pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true,cors:true}
 };
 const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
 
@@ -72,17 +72,19 @@ async function get(name,cfg){try{
 
     // 1. SorryApp (ex : Pipedrive)
     if (cfg.sorry) {
-      const html = await fetch(cfg.api).then(r => r.text());
+      // si la fiche porte le flag cors on route la requête via le proxy
+      const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api)
+                          .then(r => r.text());
     
-      // 1. OK ?
-      if (/All systems (are )?operational/i.test(html))
-        return { ind:'ok' };
+      /* 1.a — page « tout va bien »  */
+      if (/All systems (are )?(go|operational)/i.test(html))
+          return { ind:'ok' };
     
-      // 2. Enquête : cherche un titre d’incident
-      const m = html.match(/<h3[^>]*class="notice__title"[^>]*>([^<]+)/i);
+      /* 1.b — premier titre d’incident actif                         */
+      const m     = html.match(/<h3[^>]*class="notice__title"[^>]*>([^<]+)/i);
       const title = m ? m[1].trim() : '';
     
-      // 3. gravité
+      /* 1.c — couleur : critical ⇒ major, sinon minor                */
       const ind = /notice__state--critical|major/i.test(html) ? 'major' : 'minor';
       return { ind, title };
     }
