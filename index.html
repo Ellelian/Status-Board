@@ -93,6 +93,7 @@ function map(ind){const n=normalize(ind);if(okWords.includes(n))return{cls:'ok',
 function ago(t){const s=Math.floor((Date.now()-t)/1000);if(s<60)return s+'s';const m=Math.floor(s/60);if(m<60)return m+' min';return Math.floor(m/60)+' h';}
 
 /******** SorryApp parser (status.pipedrive.com & co) ********/
+  
 function parseSorry(html) {
   // a.  All-green banner  («All systems are go» ou «operational»)
   if (/All[\s\u00a0]+systems[\s\u00a0]+(?:are[\s\u00a0]+)?(?:go|operational)/i
@@ -117,7 +118,9 @@ function parseSorry(html) {
  *  4.  AUTO‑DETECTION d’un endpoint JSON à partir d’une URL
  *      (heuristique simple ; complète‑la au fil du temps)
  ************************************************************/
+  
 async function autoDetect(url){
+  
   const origin=new URL(url).origin;
   /* 1.  on tente Instatus -------------------------------- */
   if(/instatus/i.test(origin)) return {api:origin+'/summary.json',instatus:true};
@@ -133,10 +136,14 @@ async function autoDetect(url){
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
     return {api:'https://api.pulsetic.com/public/status/'+new URL(url).hostname,pulsetic:true};
 
-  /* incident.io – Linear, Vercel, Loom, Hashicorp, etc.  */
-  if (/linearstatus|incident_io|incident.io/.test(html)) {
-    return { api: origin + '/summary.json', incidentio: true };
-  }
+  /* Incident.io – Linear, Vercel, Loom, Hashicorp, etc.  */
+    if (/linearstatus|incident_io|incident\.io/.test(html)) {
+      return {
+        api : origin + '/summary.json',
+        incidentio: true,
+        cors: true          // ⬅️  force le proxy
+      };
+    }
 
   /* Atlassian Statuspage (fallback)                      */
   return {api:origin+'/api/v2/summary.json'};
@@ -222,28 +229,6 @@ async function get(name,cfg){try{
       return { ind, title };
     }
 
-    /*  incident.io  ---------------------------------------------------- */
-    if (cfg.incidentio) {
-      // le JSON est directement sous la clef `summary`
-      const s = data.summary || data;        // on sécurise pour d’autres pages
-    
-      // 1. incidents en cours ?
-      if (s.ongoing_incidents && s.ongoing_incidents.length) {
-        const sev = s.ongoing_incidents[0].severity;        // major / minor
-        return {
-          ind  : sev === 'major' ? 'major' : 'minor',
-          title: s.ongoing_incidents[0].name
-        };
-      }
-    
-      // 2. composants affectés ?
-      if (s.affected_components && s.affected_components.length) {
-        return { ind: 'minor', title: s.affected_components[0].component_name };
-      }
-    
-      return { ind: 'ok' };
-    }
-
     // 3. Ping
     if (cfg.ping) {
       const ok = await fetch(cfg.api, { mode: 'no-cors' })  // plus de corsproxy
@@ -262,19 +247,34 @@ async function get(name,cfg){try{
     let ind=data.status?.indicator||data.page?.status||'ok';
     let title=data.status?.description||'';
 
-    /* Instatus activeIncidents */
+    /* 6. Incident.io  (MAINTENANT data existe) */
+    if (cfg.incidentio) {
+      const s = data.summary || data;
+      if (s.ongoing_incidents?.length) {
+        const sev = s.ongoing_incidents[0].severity || 'minor';
+        return { ind: sev === 'major' ? 'major' : 'minor',
+                 title: s.ongoing_incidents[0].name };
+      }
+      if (s.affected_components?.length) {
+        return { ind:'minor',
+                 title:s.affected_components[0].component_name };
+      }
+      return { ind:'ok' };
+    }
+
+    /* 7. Instatus activeIncidents */
     if(data.activeIncidents&&data.activeIncidents.length){
         const active=data.activeIncidents.find(i=>!closedWords.includes(normalize(i.status)));
         if(active){const impact=normalize(active.impact||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title;}
     }    
 
-    /* Atlassian components check */
+    /* 8. Atlassian components check */
     if(ind==='none'&&Array.isArray(data.components)){
       const bad=data.components.find(c=>minorWords.concat(majorWords).includes(normalize(c.status)));
       if(bad){ind=minorWords.includes(normalize(bad.status))?'minor':'major';title=bad.name;}
     }
 
-    /* Atlassian incidents */
+    /* 9. Atlassian incidents */
     if(Array.isArray(data.incidents)){
       const active=data.incidents.find(i=>!closedWords.includes(normalize(i.status||i.state)));
       if(active){const impact=normalize(active.impact||active.severity||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title||active.title||'';}
