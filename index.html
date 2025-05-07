@@ -46,7 +46,7 @@
 <div id="timestamp">Chargement…</div>
 <div id="grid"></div>
 
-<script>
+<script defer>
 /************************************************************
  *  1.  CONFIG « d’usine »  (tes entrées statiques)
  ************************************************************/
@@ -242,9 +242,18 @@ async function get(name,cfg){try{
     }    
 
     /* Atlassian components check */
-    if(ind==='none'&&Array.isArray(data.components)){
-      const bad=data.components.find(c=>minorWords.concat(majorWords).includes(normalize(c.status)));
-      if(bad){ind=minorWords.includes(normalize(bad.status))?'minor':'major';title=bad.name;}
+    if (ind === 'none' && Array.isArray(data.components)) {
+
+      const bad = data.components.find(c => {
+          if (c.group) return false;               // ignore les groupes
+          const st = normalize(c.status);
+          return st === 'major_outage' || st === 'partial_outage';
+      });
+    
+      if (bad) {
+        ind   = bad.status === 'major_outage' ? 'major' : 'minor';
+        title = bad.name;
+      }
     }
 
     /* Atlassian incidents */
