@@ -10,6 +10,13 @@
   :root{--card-radius:14px;--shadow:0 2px 6px #0002;--bg:#f4f4f6;--ok:#4caf50;--minor:#ff9800;--major:#f44336;--loading:#9e9e9e;--text:#111}
   body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:2rem}
   h1{margin-top:0;font-size:2.2rem}
+  
+    /* ————— NOUVEAU  : petit formulaire ————— */
+  form#addForm{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0 1.2rem}
+  form#addForm input{padding:.45rem .65rem;border:1px solid #ccc;border-radius:6px;font:inherit}
+  form#addForm button{padding:.45rem .9rem;border:0;border-radius:6px;background:#1976d2;color:#fff;font-weight:600;cursor:pointer}
+  form#addForm button:hover{filter:brightness(1.1)}
+  
   #timestamp{margin-bottom:1.5rem;font-size:.9rem;color:#555}
   #grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
   .card{background:#fff;border-radius:var(--card-radius);box-shadow:var(--shadow);padding:1rem 1.2rem;text-decoration:none;display:flex;flex-direction:column;gap:.35rem;transition:transform .15s}
@@ -28,11 +35,21 @@
   
 <body>
 <h1>Status en direct</h1>
+
+<!-- ────────── formulaire d’ajout ──────────-->
+<form id="addForm">
+  <input id="srvName" placeholder="Nom du service" required style="flex:1 1 110px">
+  <input id="srvUrl"  placeholder="URL publique de la page de statut" required style="flex:2 1 260px">
+  <button>Ajouter</button>
+</form>
+
 <div id="timestamp">Chargement…</div>
 <div id="grid"></div>
-  
+
 <script>
-/******** CONFIG ********/ 
+/************************************************************
+ *  1.  CONFIG « d’usine »  (tes entrées statiques)
+ ************************************************************/
 const pages={
   activecampaign:{api:'https://status.activecampaign.com/api/v2/summary.json',link:'https://status.activecampaign.com'},
   webinarjam    :{api:'https://status.webinarjam.com/api/v2/summary.json',link:'https://status.webinarjam.com'},
@@ -55,6 +72,15 @@ const pages={
   anthropic     :{api:'https://status.anthropic.com/api/v2/summary.json',   link:'https://status.anthropic.com'},
   openai        :{api:'https://status.openai.com/api/v2/summary.json',      link:'https://status.openai.com'}
 };
+  
+/************************************************************
+ *  2.  SERVICES AJOUTÉS PAR L’UTILISATEUR (persistance)
+ ************************************************************/
+Object.assign(pages, JSON.parse(localStorage.getItem('extraPages')||'{}'));
+
+/************************************************************
+ *  3.  UTILITAIRES
+ ************************************************************/
 const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
 
 /******** HELPERS ********/
@@ -86,6 +112,67 @@ function parseSorry(html) {
 
   return { ind, title };
 }
+
+/************************************************************
+ *  4.  AUTO‑DETECTION d’un endpoint JSON à partir d’une URL
+ *      (heuristique simple ; complète‑la au fil du temps)
+ ************************************************************/
+async function autoDetect(url){
+  const origin=new URL(url).origin;
+  /* 1.  on tente Instatus -------------------------------- */
+  if(/instatus/i.test(origin)) return {api:origin+'/summary.json',instatus:true};
+
+  /* 2.  on télécharge la page (si CORS permis) ----------- */
+  let html='';
+  try{html=await fetch(cors(url)).then(r=>r.text())}catch(e){}
+
+  /* SorryApp                                             */
+  if(/notice--open/i.test(html)) return {api:url,sorry:true,cors:true};
+
+  /* Pulsetic                                             */
+  if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
+    return {api:'https://api.pulsetic.com/public/status/'+new URL(url).hostname,pulsetic:true};
+
+  /* Atlassian Statuspage (fallback)                      */
+  return {api:origin+'/api/v2/summary.json'};
+}
+
+/************************************************************
+ *  5.  FORMULAIRE : ajout d’un service à la volée
+ ************************************************************/
+document.getElementById('addForm').addEventListener('submit', async e=>{
+  e.preventDefault();
+
+  const rawName = srvName.value.trim();
+  const key     = rawName.toLowerCase().replace(/\s+/g,'');
+  const pageURL = srvUrl.value.trim();
+
+  if(!rawName || !pageURL) return;
+  if(pages[key]) return alert('Ce nom est déjà utilisé.');
+
+  try{
+     const cfg = await autoDetect(pageURL);
+     cfg.link  = pageURL;          // le lien cliquable dans la tuile
+     pages[key]= cfg;              // ajoute au tableau en mémoire
+
+     /* — sauve dans localStorage pour la prochaine session — */
+     const extra = JSON.parse(localStorage.getItem('extraPages')||'{}');
+     extra[key]  = cfg;
+     localStorage.setItem('extraPages', JSON.stringify(extra));
+
+     refresh();        // redessine immédiatement
+     addForm.reset();
+  }catch(err){
+     alert('Impossible de déterminer le flux JSON.\nTu peux l’ajouter à la main !');
+  }
+});
+
+/************************************************************
+ *  6.  TON CODE INITIAL (fetch, render, tick, etc.)
+ *      ────────────────────────────────────────────────────
+ *      Il reste identique – ne change rien ci‑dessous,
+ *      c’est lui qui profite des nouveaux services.
+ ************************************************************/
   
 /******** NOTIFY ********/
 let prev={},first=true;function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
