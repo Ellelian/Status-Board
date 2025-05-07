@@ -124,7 +124,7 @@ async function autoDetect(pageURL){
   const origin  = url.origin;
   const host    = url.hostname;
 
-    /* 1 ▸ cas explicites --------------------------------- */
+  /* ---------- 1. cas Google explicites ------------------ */
   if (/status\.cloud\.google\.com/.test(origin))
       return { api:'https://status.cloud.google.com/incidents.json',
                google:true, cors:true };
@@ -133,29 +133,25 @@ async function autoDetect(pageURL){
       return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
                google:true, cors:true };
 
-  if (/instatus/i.test(origin))
-      return { api:origin + '/summary.json', instatus:true };
-
-  /* ---------- 1. Liste des cibles potentielles ---------- */
+  /* ---------- 2. sondes JSON courantes ------------------ */
   const probes = [
-    { api: origin + '/api/v2/summary.json',   flag:{/* Atlassian */} },
+    { api: origin + '/api/v2/summary.json',   flag:{} },         // Atlassian
     { api: origin + '/summary.json',          flag:{ instatus:true } },
-    { api: 'https://api.pulsetic.com/public/status/' + host,
-                                             flag:{ pulsetic:true } }
+    { api: `https://api.pulsetic.com/public/status/${host}`,
+                                                flag:{ pulsetic:true } }
   ];
 
-  /* ---------- 2. On tente chaque cible en parallèle ----- */
   for (const p of probes){
     try{
-      const r = await fetch(cors(p.api));        // via le proxy
+      const r = await fetch(cors(p.api));
       if (!r.ok) continue;
-      await r.clone().json();                    // ↯ lève si pas JSON
-      return { api:p.api, cors:true, ...p.flag };  // ← bingo
-    }catch{/* on continue */ }
+      await r.clone().json();                 // ↯ lève si pas du JSON
+      return { api:p.api, cors:true, ...p.flag };   // ← trouvé !
+    }catch{/* on poursuit la boucle */ }
   }
 
-  /* ---------- 3. Fallback HTML  (SorryApp) -------------- */
-  return { api: origin, sorry:true, cors:true };
+  /* ---------- 3. dernier recours : page HTML SorryApp --- */
+  return { api: pageURL, sorry:true, cors:true };
 }
 
 /************************************************************
