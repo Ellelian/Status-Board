@@ -120,9 +120,11 @@ function parseSorry(html) {
  ************************************************************/
   
 async function autoDetect(pageURL){
-  const origin = new URL(pageURL).origin;
+  const url     = new URL(pageURL);
+  const origin  = url.origin;
+  const host    = url.hostname;
 
-  /* 1 ▸ cas explicites --------------------------------- */
+    /* 1 ▸ cas explicites --------------------------------- */
   if (/status\.cloud\.google\.com/.test(origin))
       return { api:'https://status.cloud.google.com/incidents.json',
                google:true, cors:true };
@@ -134,33 +136,26 @@ async function autoDetect(pageURL){
   if (/instatus/i.test(origin))
       return { api:origin + '/summary.json', instatus:true };
 
-  /* 2 ▸ Incident.io (Linear, Vercel…) ------------------- */
-  try{
-     const r = await fetch(cors(origin + '/summary.json'));
-     if (r.ok) {                     // JSON trouvé → driver « incidentio »
-        return { api:origin + '/summary.json', incidentio:true, cors:true };
-     }
-  }catch{/* ignore */}
+  /* ---------- 1. Liste des cibles potentielles ---------- */
+  const probes = [
+    { api: origin + '/api/v2/summary.json',   flag:{/* Atlassian */} },
+    { api: origin + '/summary.json',          flag:{ instatus:true } },
+    { api: 'https://api.pulsetic.com/public/status/' + host,
+                                             flag:{ pulsetic:true } }
+  ];
 
-  /* 3 ▸ on récupère 1× le HTML -------------------------- */
-  let html = '';
-  try{ html = await fetch(cors(pageURL)).then(r=>r.text()); }catch{/* CORS */ }
+  /* ---------- 2. On tente chaque cible en parallèle ----- */
+  for (const p of probes){
+    try{
+      const r = await fetch(cors(p.api));        // via le proxy
+      if (!r.ok) continue;
+      await r.clone().json();                    // ↯ lève si pas JSON
+      return { api:p.api, cors:true, ...p.flag };  // ← bingo
+    }catch{/* on continue */ }
+  }
 
-  if (/sorry-app|notice__title/i.test(html))
-      return { api:pageURL, sorry:true, cors:true };
-
-  if (/js\/app\./.test(html) && !/pulsetic\.com/.test(origin))
-      return { api:'https://api.pulsetic.com/public/status/' + new URL(pageURL).hostname,
-               pulsetic:true };
-
-  /* 4 ▸ Atlassian – seulement si le JSON existe --------- */
-  try{
-     const r = await fetch(cors(origin + '/api/v2/summary.json'));
-     if (r.ok) return { api:origin + '/api/v2/summary.json' };
-  }catch{/* 404 ? 403 ? */}
-
-  /* 5 ▸ dernier recours : SorryApp derrière un pare‑feu  */
-  return { api:pageURL, sorry:true, cors:true };
+  /* ---------- 3. Fallback HTML  (SorryApp) -------------- */
+  return { api: origin, sorry:true, cors:true };
 }
 
 /************************************************************
