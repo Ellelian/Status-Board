@@ -69,8 +69,8 @@ const pages={
   leadpages     :{api:'https://status.leadpages.com/api/v2/summary.json',link:'https://status.leadpages.com'},
   circle        :{api:'https://status.circle.so/api/v2/summary.json',link:'https://status.circle.so'},
   pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true,cors:true},
-  anthropic     :{api:'https://status.anthropic.com/api/v2/summary.json',   link:'https://status.anthropic.com'},
-  openai        :{api:'https://status.openai.com/api/v2/summary.json',      link:'https://status.openai.com'}
+  anthropic     :{api:'https://status.anthropic.com/api/v2/summary.json',link:'https://status.anthropic.com'},
+  openai        :{api:'https://status.openai.com/api/v2/summary.json',link:'https://status.openai.com'}
 };
   
 /************************************************************
@@ -154,8 +154,8 @@ async function autoDetect(url){
   try{html=await fetch(cors(url)).then(r=>r.text())}catch(e){}
 
   /* SorryApp                                             */
-  if (/notice__title|notice__state|sorry-app/i.test(html))
-    return {api:url,sorry:true,cors:true};
+  if (/sorry-app|notice__title/i.test(html)){
+    return { api: pageURL, sorry:true, cors:true };
 
   /* Pulsetic                                             */
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
