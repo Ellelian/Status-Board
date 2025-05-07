@@ -133,26 +133,9 @@ async function autoDetect(url){
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
     return {api:'https://api.pulsetic.com/public/status/'+new URL(url).hostname,pulsetic:true};
 
-  /*  incident.io  ---------------------------------------------------- */
-  if (cfg.incidentio) {
-    // le JSON est directement sous la clef `summary`
-    const s = data.summary || data;        // on sécurise pour d’autres pages
-  
-    // 1. incidents en cours ?
-    if (s.ongoing_incidents && s.ongoing_incidents.length) {
-      const sev = s.ongoing_incidents[0].severity;        // major / minor
-      return {
-        ind  : sev === 'major' ? 'major' : 'minor',
-        title: s.ongoing_incidents[0].name
-      };
-    }
-  
-    // 2. composants affectés ?
-    if (s.affected_components && s.affected_components.length) {
-      return { ind: 'minor', title: s.affected_components[0].component_name };
-    }
-  
-    return { ind: 'ok' };
+  /* incident.io – Linear, Vercel, Loom, Hashicorp, etc.  */
+  if (/linearstatus|incident_io|incident.io/.test(html)) {
+    return { api: origin + '/summary.json', incidentio: true };
   }
 
   /* Atlassian Statuspage (fallback)                      */
@@ -237,6 +220,28 @@ async function get(name,cfg){try{
       }
     
       return { ind, title };
+    }
+
+    /*  incident.io  ---------------------------------------------------- */
+    if (cfg.incidentio) {
+      // le JSON est directement sous la clef `summary`
+      const s = data.summary || data;        // on sécurise pour d’autres pages
+    
+      // 1. incidents en cours ?
+      if (s.ongoing_incidents && s.ongoing_incidents.length) {
+        const sev = s.ongoing_incidents[0].severity;        // major / minor
+        return {
+          ind  : sev === 'major' ? 'major' : 'minor',
+          title: s.ongoing_incidents[0].name
+        };
+      }
+    
+      // 2. composants affectés ?
+      if (s.affected_components && s.affected_components.length) {
+        return { ind: 'minor', title: s.affected_components[0].component_name };
+      }
+    
+      return { ind: 'ok' };
     }
 
     // 3. Ping
