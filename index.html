@@ -122,6 +122,19 @@ function parseSorry(html) {
 async function autoDetect(url){
   
   const origin=new URL(url).origin;
+
+   /* ——— 1.  Google Cloud  ——— */
+   if (/status\.cloud\.google\.com/.test(origin)){
+       return { api:'https://status.cloud.google.com/incidents.json',
+                google:true, cors:true };
+   }
+  
+   /* ——— 2.  Google Workspace ——— */
+   if (/appsstatus\/dashboard/.test(url)){
+       return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
+                google:true, cors:true };
+   }
+  
   /* 1.  on tente Instatus -------------------------------- */
   if(/instatus/i.test(origin)) return {api:origin+'/summary.json',instatus:true};
 
@@ -141,7 +154,8 @@ async function autoDetect(url){
   try{html=await fetch(cors(url)).then(r=>r.text())}catch(e){}
 
   /* SorryApp                                             */
-  if(/notice--open/i.test(html)) return {api:url,sorry:true,cors:true};
+  if (/notice__title|notice__state|sorry-app/i.test(html))
+    return {api:url,sorry:true,cors:true};
 
   /* Pulsetic                                             */
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
