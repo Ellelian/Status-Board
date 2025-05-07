@@ -133,6 +133,28 @@ async function autoDetect(url){
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
     return {api:'https://api.pulsetic.com/public/status/'+new URL(url).hostname,pulsetic:true};
 
+  /*  incident.io  ---------------------------------------------------- */
+  if (cfg.incidentio) {
+    // le JSON est directement sous la clef `summary`
+    const s = data.summary || data;        // on sécurise pour d’autres pages
+  
+    // 1. incidents en cours ?
+    if (s.ongoing_incidents && s.ongoing_incidents.length) {
+      const sev = s.ongoing_incidents[0].severity;        // major / minor
+      return {
+        ind  : sev === 'major' ? 'major' : 'minor',
+        title: s.ongoing_incidents[0].name
+      };
+    }
+  
+    // 2. composants affectés ?
+    if (s.affected_components && s.affected_components.length) {
+      return { ind: 'minor', title: s.affected_components[0].component_name };
+    }
+  
+    return { ind: 'ok' };
+  }
+
   /* Atlassian Statuspage (fallback)                      */
   return {api:origin+'/api/v2/summary.json'};
 }
@@ -242,18 +264,9 @@ async function get(name,cfg){try{
     }    
 
     /* Atlassian components check */
-    if (ind === 'none' && Array.isArray(data.components)) {
-
-      const bad = data.components.find(c => {
-          if (c.group) return false;               // ignore les groupes
-          const st = normalize(c.status);
-          return st === 'major_outage' || st === 'partial_outage';
-      });
-    
-      if (bad) {
-        ind   = bad.status === 'major_outage' ? 'major' : 'minor';
-        title = bad.name;
-      }
+    if(ind==='none'&&Array.isArray(data.components)){
+      const bad=data.components.find(c=>minorWords.concat(majorWords).includes(normalize(c.status)));
+      if(bad){ind=minorWords.includes(normalize(bad.status))?'minor':'major';title=bad.name;}
     }
 
     /* Atlassian incidents */
