@@ -125,6 +125,17 @@ async function autoDetect(url){
   /* 1.  on tente Instatus -------------------------------- */
   if(/instatus/i.test(origin)) return {api:origin+'/summary.json',instatus:true};
 
+  /* 1‑bis ▸ Incident.io  (test JSON avant de lire le HTML) */
+  try {
+    const r = await fetch(cors(origin + '/summary.json'));
+    if (r.ok) {
+      await r.clone().json();              // ← s’assure que c’est bien du JSON
+      return { api: origin + '/summary.json',
+               incidentio:true,
+               cors:true };
+    }
+  } catch(_) { /* on tentera autre chose plus bas */ }
+
   /* 2.  on télécharge la page (si CORS permis) ----------- */
   let html='';
   try{html=await fetch(cors(url)).then(r=>r.text())}catch(e){}
@@ -135,15 +146,6 @@ async function autoDetect(url){
   /* Pulsetic                                             */
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
     return {api:'https://api.pulsetic.com/public/status/'+new URL(url).hostname,pulsetic:true};
-
-  /* Incident.io – Linear, Vercel, Loom, Hashicorp, etc.  */
-    if (/linearstatus|incident_io|incident\.io/.test(html)) {
-      return {
-        api : origin + '/summary.json',
-        incidentio: true,
-        cors: true          // ⬅️  force le proxy
-      };
-    }
 
   /* Atlassian Statuspage (fallback)                      */
   return {api:origin+'/api/v2/summary.json'};
