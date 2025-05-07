@@ -156,6 +156,7 @@ async function autoDetect(url){
   /* SorryApp                                             */
   if (/sorry-app|notice__title/i.test(html)){
     return { api: pageURL, sorry:true, cors:true };
+  }
 
   /* Pulsetic                                             */
   if(/js\/app\./i.test(html)&&!/pulsetic\.com/.test(origin))
