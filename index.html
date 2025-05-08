@@ -148,31 +148,36 @@ async function autoDetect(pageURL){
     { api: origin + '/api/v2/summary.json', flavour:'atlassian' },
     { api: origin + '/summary.json',        flavour:'instatus'  },
     { api: `https://api.pulsetic.com/public/status/${host}`,
-                                                flavour:'pulsetic' }
+      flavour:'pulsetic',  method:'POST' }
   ];
 
+/* 3. tentative “directe” */
   for (const p of probes){
     console.log('   probing', p.api);
     try{
-      const r = await fetch(p.api, {mode:'cors'});
-      if (!r.ok)          { console.log('      ⇢ HTTP', r.status); continue; }
+      const r = await fetch(p.api, {
+        method: p.method || 'GET',
+        mode  : 'cors'
+      });
+      if (!r.ok){ console.log('      ⇢ HTTP', r.status); continue; }
       await r.clone().json();
       console.log('      ⇢ OK direct');
-      return { api:p.api, [p.flavour]:true };
+      return { api:p.api, method:p.method, [p.flavour]:true };
     }catch{ console.log('      ⇢ pas JSON ou CORS'); }
   }
 
+  /* 4. via proxy (on garde la même méthode) */
   for (const p of probes){
     try{
-      const r = await fetch(cors(p.api));
-      if (!r.ok)          { console.log('      ⇠ proxy HTTP', r.status); continue; }
+      const r = await fetch(cors(p.api), { method:p.method || 'GET' });
+      if (!r.ok){ console.log('      ⇠ proxy HTTP', r.status); continue; }
       await r.clone().json();
       console.log(`      ⇠ OK via proxy (${p.flavour})`);
-      return { api:p.api, cors:true, [p.flavour]:true };
+      return { api:p.api, cors:true, method:p.method, [p.flavour]:true };
     }catch{/* ignore */ }
   }
 
-  /* ——— 3. fallback HTML : SorryApp / Pulsetic ——— */
+  /* ——— 5. fallback HTML : SorryApp / Pulsetic ——— */
   let html = '';
   let code = 0;
   try{
