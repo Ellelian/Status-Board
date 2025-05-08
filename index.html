@@ -59,18 +59,21 @@ const pages={
   clickfunnels  :{api:'https://status.clickfunnels.com/api/v2/summary.json',link:'https://status.clickfunnels.com'},
   typeform      :{api:'https://status.typeform.com/api/v2/summary.json',link:'https://status.typeform.com'},
   calendly      :{api:'https://www.calendlystatus.com/api/v2/summary.json',link:'https://www.calendlystatus.com'},
-  gworkspace    :{api:'https://www.google.com/appsstatus/dashboard/incidents.json',link:'https://www.google.com/appsstatus/dashboard',cors:true,google:true},
-  gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true,google:true},
   webflow       :{api:'https://status.webflow.com/api/v2/summary.json',link:'https://status.webflow.com'},
   notion        :{api:'https://status.notion.so/api/v2/summary.json',link:'https://status.notion.so'},
-  gohighlevel   :{api:'https://api.pulsetic.com/public/status/status.gohighlevel.com',link:'https://status.gohighlevel.com',pulsetic:true},
   zapier        :{api:'https://status.zapier.com/api/v2/summary.json',link:'https://status.zapier.com'},
   clicksend     :{api:'https://status.clicksend.com/api/v2/summary.json',link:'https://status.clicksend.com'},
   leadpages     :{api:'https://status.leadpages.com/api/v2/summary.json',link:'https://status.leadpages.com'},
   circle        :{api:'https://status.circle.so/api/v2/summary.json',link:'https://status.circle.so'},
-  pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true,cors:true},
   anthropic     :{api:'https://status.anthropic.com/api/v2/summary.json',link:'https://status.anthropic.com'},
-  openai        :{api:'https://status.openai.com/api/v2/summary.json',link:'https://status.openai.com'}
+  openai        :{api:'https://status.openai.com/api/v2/summary.json',link:'https://status.openai.com'},
+
+  gohighlevel   :{api:'https://api.pulsetic.com/public/status/status.gohighlevel.com',link:'https://status.gohighlevel.com',pulsetic:true},
+
+  pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true,cors:true},
+  
+  gworkspace    :{api:'https://www.google.com/appsstatus/dashboard/incidents.json',link:'https://www.google.com/appsstatus/dashboard',cors:true,google:true},
+  gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true,google:true}
 };
   
 /************************************************************
@@ -167,16 +170,24 @@ async function autoDetect(pageURL){
     }catch{/* rien */ }
   }
 
-  /* ——— 3.  lecture HTML pour SorryApp / Pulsetic ——— */
-  try{
-    const html = await fetch(cors(origin)).then(r => r.text());
-    if (/notice--open|sorry-app/i.test(html))
-      return { api:origin, sorry:true, cors:true };
-
-    if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin))
-      return { api:`https://api.pulsetic.com/public/status/${host}`,
-               pulsetic:true };
-  }catch{/* ignore */ }
+  /* 3.  lecture HTML pour SorryApp / Pulsetic ---------------- */
+  let html = '';
+  try {
+    html = await fetch(cors(origin)).then(r => r.text());
+  } catch (e) {
+    // si le proxy échoue mais qu’on suspecte fortement SorryApp,
+    // on décide malgré tout de retourner ce flavour.
+    if (/status\.pipedrive\.com/.test(origin))          // ← ajoute d’autres
+      return { api: origin, sorry:true, cors:true };    //   domaines connus
+  }
+  
+  /* si la requête a quand même réussi on inspecte le HTML */
+  if (/notice--open|sorry-app/i.test(html))
+    return { api: origin, sorry:true, cors:true };
+  
+  if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin))
+    return { api:`https://api.pulsetic.com/public/status/${host}`,
+             pulsetic:true };
 
   /* ——— 4.  échec total ——— */
   throw Error('Impossible de trouver un endpoint JSON.');
