@@ -123,73 +123,71 @@ function parseSorry(html) {
  ************************************************************/
   
 async function autoDetect(pageURL){
+  
   const url    = new URL(pageURL);
   const origin = url.origin;
   const host   = url.hostname;
 
   console.log('[detect] ▶', pageURL);
 
-  /* ——— cas Google “à la main” ——— */
+  /* ——— 0. cas “au doigt” : Pipedrive ——— */
+  if (/^status\.pipedrive\.com$/.test(host))
+      return { api: origin, sorry:true, cors:true };
+
+  /* ——— 1. cas Google ——— */
   if (/status\.cloud\.google\.com/.test(origin))
-    return { api:'https://status.cloud.google.com/incidents.json',
-             google:true, cors:true };
+      return { api:'https://status.cloud.google.com/incidents.json',
+               google:true, cors:true };
 
   if (/appsstatus\/dashboard/.test(url.pathname))
-    return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
-             google:true, cors:true };
+      return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
+               google:true, cors:true };
 
-  /* ——— endpoints candidats ——— */
+  /* ——— 2. sondes JSON connues ——— */
   const probes = [
-    { api: origin + '/api/v2/summary.json',   flavour:'atlassian' },
-    { api: origin + '/summary.json',          flavour:'instatus'  },
+    { api: origin + '/api/v2/summary.json', flavour:'atlassian' },
+    { api: origin + '/summary.json',        flavour:'instatus'  },
     { api: `https://api.pulsetic.com/public/status/${host}`,
-                                            flavour:'pulsetic'  }
+                                                flavour:'pulsetic' }
   ];
 
-  /* ——— 1.  tentative “directe” ——— */
   for (const p of probes){
     console.log('   probing', p.api);
-
     try{
       const r = await fetch(p.api, {mode:'cors'});
-      if (!r.ok)      { console.log('      ⇢ HTTP', r.status); continue; }
+      if (!r.ok)          { console.log('      ⇢ HTTP', r.status); continue; }
       await r.clone().json();
       console.log('      ⇢ OK direct');
-      return { api:p.api, [p.flavour]:true };     // pas de proxy
-    }catch(e){ console.log('      ⇢ pas JSON ou CORS'); }
+      return { api:p.api, [p.flavour]:true };
+    }catch{ console.log('      ⇢ pas JSON ou CORS'); }
   }
 
-  /* ——— 2.  tentative via proxy ——— */
   for (const p of probes){
     try{
       const r = await fetch(cors(p.api));
-      if (!r.ok)      { console.log('      ⇠ proxy HTTP', r.status); continue; }
+      if (!r.ok)          { console.log('      ⇠ proxy HTTP', r.status); continue; }
       await r.clone().json();
       console.log(`      ⇠ OK via proxy (${p.flavour})`);
       return { api:p.api, cors:true, [p.flavour]:true };
-    }catch{/* rien */ }
+    }catch{/* ignore */ }
   }
 
-  /* 3.  lecture HTML pour SorryApp / Pulsetic ---------------- */
+  /* ——— 3. fallback HTML : SorryApp / Pulsetic ——— */
   let html = '';
-  try {
-    html = await fetch(cors(origin)).then(r => r.text());
-  } catch (e) {
-    // si le proxy échoue mais qu’on suspecte fortement SorryApp,
-    // on décide malgré tout de retourner ce flavour.
-    if (/status\.pipedrive\.com/.test(origin))          // ← ajoute d’autres
-      return { api: origin, sorry:true, cors:true };    //   domaines connus
-  }
-  
-  /* si la requête a quand même réussi on inspecte le HTML */
-  if (/notice--open|sorry-app/i.test(html))
-    return { api: origin, sorry:true, cors:true };
-  
-  if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin))
-    return { api:`https://api.pulsetic.com/public/status/${host}`,
-             pulsetic:true };
+  let code = 0;
+  try{
+    const r = await fetch(cors(origin));
+    code = r.status;
+    html = await r.text();
+  }catch{/* proxy KO */}
 
-  /* ——— 4.  échec total ——— */
+  if (code >= 400 || /notice--open|sorry-app/i.test(html))
+      return { api:origin, sorry:true, cors:true };
+
+  if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin))
+      return { api:`https://api.pulsetic.com/public/status/${host}`,
+               pulsetic:true };
+
   throw Error('Impossible de trouver un endpoint JSON.');
 }
 
