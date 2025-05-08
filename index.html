@@ -120,29 +120,66 @@ function parseSorry(html) {
  ************************************************************/
   
 async function autoDetect(pageURL){
-  console.log('[autoDetect] ▶', pageURL);
+  const url    = new URL(pageURL);
+  const origin = url.origin;
+  const host   = url.hostname;
 
-  const url     = new URL(pageURL);
-  const origin  = url.origin;
-  const host    = url.hostname;
+  console.log('[detect] ▶', pageURL);
 
-  /* 0. pages Google explicites --------------------------- */
+  /* ——— cas Google “à la main” ——— */
   if (/status\.cloud\.google\.com/.test(origin))
-      return { api:'https://status.cloud.google.com/incidents.json',
-               google:true, cors:true };
+    return { api:'https://status.cloud.google.com/incidents.json',
+             google:true, cors:true };
 
-  if (/appsstatus\/dashboard/.test(pageURL))
-      return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
-               google:true, cors:true };
+  if (/appsstatus\/dashboard/.test(url.pathname))
+    return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
+             google:true, cors:true };
 
-  /* 1. endpoints “évidents” ------------------------------- */
-  if (/instatus/i.test(origin))
-      return { api:origin + '/summary.json', instatus:true };
+  /* ——— endpoints candidats ——— */
+  const probes = [
+    { api: origin + '/api/v2/summary.json',   flavour:'atlassian' },
+    { api: origin + '/summary.json',          flavour:'instatus'  },
+    { api: `https://api.pulsetic.com/public/status/${host}`,
+                                            flavour:'pulsetic'  }
+  ];
 
-  /* 1-bis  → **Atlassian par défaut**  -------------------- */
-  // La grande majorité des pages finissent en “…status.com”
-  // et exposent /api/v2/summary.json avec CORS ouvert.
-  return { api:origin + '/api/v2/summary.json' };
+  /* ——— 1.  tentative “directe” ——— */
+  for (const p of probes){
+    console.log('   probing', p.api);
+
+    try{
+      const r = await fetch(p.api, {mode:'cors'});
+      if (!r.ok)      { console.log('      ⇢ HTTP', r.status); continue; }
+      await r.clone().json();
+      console.log('      ⇢ OK direct');
+      return { api:p.api, [p.flavour]:true };     // pas de proxy
+    }catch(e){ console.log('      ⇢ pas JSON ou CORS'); }
+  }
+
+  /* ——— 2.  tentative via proxy ——— */
+  for (const p of probes){
+    try{
+      const r = await fetch(cors(p.api));
+      if (!r.ok)      { console.log('      ⇠ proxy HTTP', r.status); continue; }
+      await r.clone().json();
+      console.log(`      ⇠ OK via proxy (${p.flavour})`);
+      return { api:p.api, cors:true, [p.flavour]:true };
+    }catch{/* rien */ }
+  }
+
+  /* ——— 3.  lecture HTML pour SorryApp / Pulsetic ——— */
+  try{
+    const html = await fetch(cors(origin)).then(r => r.text());
+    if (/notice--open|sorry-app/i.test(html))
+      return { api:origin, sorry:true, cors:true };
+
+    if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin))
+      return { api:`https://api.pulsetic.com/public/status/${host}`,
+               pulsetic:true };
+  }catch{/* ignore */ }
+
+  /* ——— 4.  échec total ——— */
+  throw Error('Impossible de trouver un endpoint JSON.');
 }
 
 /************************************************************
