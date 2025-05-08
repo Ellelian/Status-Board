@@ -120,39 +120,57 @@ function parseSorry(html) {
  ************************************************************/
   
 async function autoDetect(pageURL){
+  console.log('[autoDetect] ▶ démarrage pour', pageURL);
   const url     = new URL(pageURL);
   const origin  = url.origin;
   const host    = url.hostname;
 
   /* ---------- 1. cas Google explicites ------------------ */
-  if (/status\.cloud\.google\.com/.test(origin))
+  if (/status\.cloud\.google\.com/.test(origin)){
+      console.log('↳ Google Cloud détecté');
       return { api:'https://status.cloud.google.com/incidents.json',
                google:true, cors:true };
-
-  if (/appsstatus\/dashboard/.test(pageURL))
+  }
+  if (/appsstatus\/dashboard/.test(pageURL)){
+      console.log('↳ Google Workspace détecté');
       return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
                google:true, cors:true };
+  }
 
   /* ---------- 2. sondes JSON courantes ------------------ */
   const probes = [
-    { api: origin + '/api/v2/summary.json',   flag:{} },         // Atlassian
-    { api: origin + '/summary.json',          flag:{ instatus:true } },
-    { api: `https://api.pulsetic.com/public/status/${host}`,
+    { api: origin + '/api/v2/summary.json',      flag:{} },
+    { api: origin + '/summary.json',             flag:{ instatus:true } },
+    { api:`https://api.pulsetic.com/public/status/${host}`,
                                                 flag:{ pulsetic:true } }
   ];
 
   for (const p of probes){
+    console.log('   probing', p.api);
     try{
       const r = await fetch(cors(p.api));
+      console.log('      ⇢ HTTP', r.status);
       if (!r.ok) continue;
-      await r.clone().json();                 // ↯ lève si pas du JSON
-      return { api:p.api, cors:true, ...p.flag };   // ← trouvé !
-    }catch{/* on poursuit la boucle */ }
+
+      // tente de parser JSON
+      try{ await r.clone().json(); }
+      catch(err){
+        console.warn('      ↯ pas du JSON :', err.message);
+        continue;
+      }
+
+      console.log('      ✓ JSON valide, endpoint retenu');
+      return { api:p.api, cors:true, ...p.flag };
+    }catch(err){
+      console.warn('      ↯ fetch KO :', err.message);
+    }
   }
 
-  /* ---------- 3. dernier recours : page HTML SorryApp --- */
+  /* ---------- 3. fallback HTML - SorryApp --------------- */
+  console.log('↳ aucun probe valide → fallback SorryApp');
   return { api: pageURL, sorry:true, cors:true };
 }
+
 
 /************************************************************
  *  5.  FORMULAIRE : ajout d’un service à la volée
