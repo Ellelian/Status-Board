@@ -237,123 +237,121 @@ document.getElementById('addForm').addEventListener('submit', async e=>{
 let prev={},first=true;function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
 
 /******** FETCH ********/
-async function get(name,cfg){try{
-
-    // 1. Pages créées avec SorryApp  (ex. Pipedrive)
+async function get(name, cfg) {
+  try {
+    // 1. SorryApp (pipedrive, etc.)
     if (cfg.sorry) {
-        const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api)
-                            .then(r => r.text());
-        return parseSorry(html);
-      }
+      const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api).then(r => r.text());
+      return parseSorry(html);
+    }
 
-    // 2. Pulsetic
+    // 2. Pulsetic (obligé de faire un POST)
     if (cfg.pulsetic) {
-      const raw  = await fetch(cfg.api, {method:'POST'}).then(r => r.json());
+      const raw  = await fetch(cfg.api, { method: cfg.method || 'POST' }).then(r => r.json());
       const page = (Array.isArray(raw) ? raw[0]?.data : raw)?.data ?? raw;
-    
-      /* — moniteurs — */
+
       let ind   = 'ok';
       let title = '';
-    
+
       const dead = page.monitors?.find(m => m.status === 'offline');
       const warn = page.monitors?.find(m => m.status !== 'online');
-    
+
       if (dead)      { ind = 'major'; title = dead.name; }
       else if (warn) { ind = 'minor'; title = warn.name; }
-    
-      /* — incidents ouverts — */
+
       const open = page.incidents?.find(i => i.status !== 'resolved');
       if (open) {
-        const isMajor = /outage|failure|down|unavailable/i.test(open.title) ||
-                        /major|critical/i.test(open.updates?.[0]?.status || '');
-        const sev     = isMajor ? 'major' : 'minor';
-    
-        // on garde la plus “grave”
+        const isMajor = /outage|failure|down|unavailable/i.test(open.title)
+                     || /major|critical/i.test(open.updates?.[0]?.status || '');
+        const sev = isMajor ? 'major' : 'minor';
         if (ind === 'ok' || (ind === 'minor' && sev === 'major')) ind = sev;
         title = open.title;
       }
-    
+
       return { ind, title };
     }
 
-    // 3. Ping
-    if (cfg.ping) {
-      const ok = await fetch(cfg.api, { mode: 'no-cors' })  // plus de corsproxy
-                    .then(() => true)    // résolu ⇒ page accessible
-                    .catch(() => false); // échec réseau ⇒ panne
-      return { ind: ok ? 'ok' : 'major' };
-    }
-    
-    /* 4. Google Workspace/Cloud special */
+    // 3. Google (cloud / workspace) : on garde ce qu’on a mis
     if (cfg.google) {
       const r   = await fetch( cors(cfg.api) );
       const arr = await r.json();
-    
-      // Heuristique : on ne marque "incident" que s'il y en a un qui n'est PAS "available"/"resolved"/"service restored"
       const hasOpen = arr.some(inc => {
         const s = (inc.status || inc.most_recent_update?.status || '').toLowerCase();
         return !/available|resolved|service restored|completed/.test(s);
       });
-    
       return { ind: hasOpen ? 'minor' : 'ok' };
     }
-    
-    /* 5. Standard fetch (with optional CORS proxy) */
+
+    // 4. Tous les autres : ON PASSE D’ABORD PAR LE PROXY
     let data;
     try {
-      data = await fetch( cfg.cors ? cors(cfg.api) : cfg.api ).then(r=>r.json());
+      data = await fetch( cors(cfg.api) ).then(r => r.json());
     } catch (e) {
-      if (!cfg.cors) {
-        try {
-          data     = await fetch( cors(cfg.api) ).then(r=>r.json());
-          cfg.cors = true;
-        } catch (e2) {
-          return { ind:'major', title:'API error' };
-        }
-      } else {
-        return { ind:'major', title:'API error' };
-      }
+      // si jamais le proxy tombe, on tente en direct
+      data = await fetch(cfg.api).then(r => r.json());
     }
 
-    /* 6. Incident.io  (MAINTENANT data existe) */
+    // 4.bis incident.io
     if (cfg.incidentio) {
       const s = data.summary || data;
       if (s.ongoing_incidents?.length) {
         const sev = s.ongoing_incidents[0].severity || 'minor';
-        return { ind: sev === 'major' ? 'major' : 'minor',
-                 title: s.ongoing_incidents[0].name };
+        return {
+          ind  : sev === 'major' ? 'major' : 'minor',
+          title: s.ongoing_incidents[0].name
+        };
       }
       if (s.affected_components?.length) {
-        return { ind:'minor',
-                 title:s.affected_components[0].component_name };
+        return {
+          ind  : 'minor',
+          title: s.affected_components[0].component_name
+        };
       }
       return { ind:'ok' };
     }
 
-    /* 7. Instatus activeIncidents */
-    if(data.activeIncidents&&data.activeIncidents.length){
-        const active=data.activeIncidents.find(i=>!closedWords.includes(normalize(i.status)));
-        if(active){const impact=normalize(active.impact||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title;}
-    }    
+    // 4.ter Instatus
+    let ind   = data.status?.indicator || data.page?.status || 'ok';
+    let title = data.status?.description || '';
 
-    /* 8. Atlassian components check */
-    if(ind==='none'&&Array.isArray(data.components)){
-      const bad=data.components.find(c=>minorWords.concat(majorWords).includes(normalize(c.status)));
-      if(bad){ind=minorWords.includes(normalize(bad.status))?'minor':'major';title=bad.name;}
+    if (data.activeIncidents && data.activeIncidents.length) {
+      const active = data.activeIncidents.find(i => !closedWords.includes(normalize(i.status)));
+      if (active) {
+        const impact = normalize(active.impact || 'minor');
+        ind   = majorWords.includes(impact) ? 'major' : 'minor';
+        title = active.name || title;
+      }
     }
 
-    /* 9. Atlassian incidents */
-    if(Array.isArray(data.incidents)){
-      const active=data.incidents.find(i=>!closedWords.includes(normalize(i.status||i.state)));
-      if(active){const impact=normalize(active.impact||active.severity||'minor');ind=majorWords.includes(impact)?'major':'minor';title=active.name||title||active.title||'';}
+    // 4.quat Atlassian : composants
+    if (ind === 'none' && Array.isArray(data.components)) {
+      const bad = data.components.find(c =>
+        minorWords.concat(majorWords).includes(normalize(c.status))
+      );
+      if (bad) {
+        ind   = minorWords.includes(normalize(bad.status)) ? 'minor' : 'major';
+        title = bad.name;
+      }
+    }
+
+    // 4.cinq Atlassian : incidents
+    if (Array.isArray(data.incidents)) {
+      const active = data.incidents.find(i => !closedWords.includes(normalize(i.status || i.state)));
+      if (active) {
+        const impact = normalize(active.impact || active.severity || 'minor');
+        ind   = majorWords.includes(impact) ? 'major' : 'minor';
+        title = active.name || title || active.title || '';
+      }
     }
 
     return { ind, title };
 
   } catch (e) {
+    console.warn('[get] erreur sur', name, e);
     return { ind:'major', title:'API error' };
   }
 }
+
 
 /******** Horloge « il y a … » ********/
 let lastRefresh = Date.now();            // sera écrasé à chaque refresh
