@@ -123,35 +123,89 @@ function parseSorry(html) {
  ************************************************************/
   
 async function autoDetect(pageURL){
-  
   const url    = new URL(pageURL);
-  const origin = url.origin;
-  const host   = url.hostname;
+  const origin = url.origin;      // ex. https://status.notion.so
+  const host   = url.hostname;    // ex. status.notion.so
 
   console.log('[detect] ▶', pageURL);
 
-  /* ——— 0. cas “au doigt” : Pipedrive ——— */
-  if (/^status\.pipedrive\.com$/.test(host))
-      return { api: origin, sorry:true, cors:true };
+  /* ───────────────────────────────
+   * 0. cas “alias” connus
+   * ─────────────────────────────── */
 
-  /* ——— 1. cas Google ——— */
-  if (/status\.cloud\.google\.com/.test(origin))
-      return { api:'https://status.cloud.google.com/incidents.json',
-               google:true, cors:true };
+  // Notion a aussi un domaine miroir (notion-status.com) qui ne donne pas le JSON
+  if (host === 'notion-status.com' || host === 'www.notion-status.com') {
+    return {
+      api  : 'https://status.notion.so/api/v2/summary.json',
+      link : pageURL,
+      cors : true,
+      atlassian: true
+    };
+  }
 
-  if (/appsstatus\/dashboard/.test(url.pathname))
-      return { api:'https://www.google.com/appsstatus/dashboard/incidents.json',
-               google:true, cors:true };
+  // Linear a déjà fait le coup aussi
+  if (host === 'status.linear.app') {
+    return {
+      api  : 'https://linearstatus.com/api/v2/summary.json',
+      link : pageURL,
+      atlassian: true
+    };
+  }
 
-  /* ——— 2. sondes JSON connues ——— */
+  // HighLevel : la page HTML est pulsetic, mais l’API est ailleurs
+  if (host === 'status.gohighlevel.com') {
+    return {
+      api    : 'https://api.pulsetic.com/public/status/status.gohighlevel.com',
+      link   : pageURL,
+      pulsetic: true,
+      method : 'POST'
+    };
+  }
+
+  // Pipedrive est en SorryApp
+  if (host === 'status.pipedrive.com') {
+    return {
+      api   : origin,
+      link  : pageURL,
+      sorry : true,
+      cors  : true
+    };
+  }
+
+  /* ───────────────────────────────
+   * 1. cas Google
+   * ─────────────────────────────── */
+  if (/status\.cloud\.google\.com/.test(origin)) {
+    return {
+      api   : 'https://status.cloud.google.com/incidents.json',
+      link  : pageURL,
+      google: true,
+      cors  : true
+    };
+  }
+
+  if (/appsstatus\/dashboard/.test(url.pathname)) {
+    return {
+      api   : 'https://www.google.com/appsstatus/dashboard/incidents.json',
+      link  : pageURL,
+      google: true,
+      cors  : true
+    };
+  }
+
+  /* ───────────────────────────────
+   * 2. sondes JSON “classiques”
+   * ─────────────────────────────── */
   const probes = [
     { api: origin + '/api/v2/summary.json', flavour:'atlassian' },
     { api: origin + '/summary.json',        flavour:'instatus'  },
     { api: `https://api.pulsetic.com/public/status/${host}`,
-      flavour:'pulsetic',  method:'POST' }
+      flavour:'pulsetic',
+      method:'POST'
+    }
   ];
 
-/* 3. tentative “directe” */
+  // 3. tentative directe
   for (const p of probes){
     console.log('   probing', p.api);
     try{
@@ -159,40 +213,83 @@ async function autoDetect(pageURL){
         method: p.method || 'GET',
         mode  : 'cors'
       });
-      if (!r.ok){ console.log('      ⇢ HTTP', r.status); continue; }
+      if (!r.ok){
+        console.log('      ⇢ HTTP', r.status);
+        continue;
+      }
       await r.clone().json();
       console.log('      ⇢ OK direct');
-      return { api:p.api, method:p.method, [p.flavour]:true };
-    }catch{ console.log('      ⇢ pas JSON ou CORS'); }
+      return {
+        api   : p.api,
+        link  : pageURL,
+        method: p.method,
+        [p.flavour]: true
+      };
+    }catch(e){
+      console.log('      ⇢ pas JSON ou CORS');
+    }
   }
 
-  /* 4. via proxy (on garde la même méthode) */
+  // 4. tentative via proxy
   for (const p of probes){
     try{
-      const r = await fetch(cors(p.api), { method:p.method || 'GET' });
-      if (!r.ok){ console.log('      ⇠ proxy HTTP', r.status); continue; }
+      const r = await fetch(
+        `https://corsproxy.io/?${encodeURIComponent(p.api)}`,
+        { method: p.method || 'GET' }
+      );
+      if (!r.ok){
+        console.log('      ⇠ proxy HTTP', r.status);
+        continue;
+      }
       await r.clone().json();
       console.log(`      ⇠ OK via proxy (${p.flavour})`);
-      return { api:p.api, cors:true, method:p.method, [p.flavour]:true };
-    }catch{/* ignore */ }
+      return {
+        api   : p.api,
+        link  : pageURL,
+        cors  : true,
+        method: p.method,
+        [p.flavour]: true
+      };
+    }catch(e){
+      // on passe au suivant
+    }
   }
 
-  /* ——— 5. fallback HTML : SorryApp / Pulsetic ——— */
+  /* ───────────────────────────────
+   * 5. fallback HTML (SorryApp / pulsetic)
+   * ─────────────────────────────── */
   let html = '';
   let code = 0;
   try{
-    const r = await fetch(cors(origin));
+    const r = await fetch(
+      `https://corsproxy.io/?${encodeURIComponent(origin)}`
+    );
     code = r.status;
     html = await r.text();
-  }catch{/* proxy KO */}
+  }catch(e){
+    // pas grave, on tente quand même la détection
+  }
 
-  if (code >= 400 || /notice--open|sorry-app/i.test(html))
-      return { api:origin, sorry:true, cors:true };
+  // SorryApp détecté ou HTML inaccessible → on force le mode sorry
+  if (code >= 400 || /notice--open|sorry-app/i.test(html)) {
+    return {
+      api   : origin,
+      link  : pageURL,
+      sorry : true,
+      cors  : true
+    };
+  }
 
-  if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin))
-      return { api:`https://api.pulsetic.com/public/status/${host}`,
-               pulsetic:true };
+  // Certaines pages pulsetic montent un app.js
+  if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin)) {
+    return {
+      api    : `https://api.pulsetic.com/public/status/${host}`,
+      link   : pageURL,
+      pulsetic: true
+    };
+  }
 
+  // vraiment rien trouvé
   throw Error('Impossible de trouver un endpoint JSON.');
 }
 
