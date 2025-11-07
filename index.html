@@ -60,7 +60,7 @@ const pages={
   typeform      :{api:'https://status.typeform.com/api/v2/summary.json',link:'https://status.typeform.com'},
   calendly      :{api:'https://www.calendlystatus.com/api/v2/summary.json',link:'https://www.calendlystatus.com'},
   webflow       :{api:'https://status.webflow.com/api/v2/summary.json',link:'https://status.webflow.com'},
-  notion        :{api:'https://status.notion.so/api/v2/summary.json',link:'https://status.notion.so',cors:true},
+  notion        :{api:'https://www.notion-status.com/api/v2/summary.json',link:'https://www.notion-status.com'},
   zapier        :{api:'https://status.zapier.com/api/v2/summary.json',link:'https://status.zapier.com'},
   clicksend     :{api:'https://status.clicksend.com/api/v2/summary.json',link:'https://status.clicksend.com'},
   leadpages     :{api:'https://status.leadpages.com/api/v2/summary.json',link:'https://status.leadpages.com'},
@@ -136,9 +136,17 @@ async function autoDetect(pageURL){
   // Notion a aussi un domaine miroir (notion-status.com) qui ne donne pas le JSON
   if (host === 'notion-status.com' || host === 'www.notion-status.com') {
     return {
-      api  : 'https://status.notion.so/api/v2/summary.json',
+      api  : origin + '/api/v2/summary.json',   // ← on reste sur le bon domaine
       link : pageURL,
-      cors : true,
+      atlassian: true
+      // (tu peux ajouter cors:true si vraiment tu vois un blocage CORS)
+    };
+  }
+
+  if (host === 'status.notion.so') {
+    return {
+      api  : 'https://www.notion-status.com/api/v2/summary.json',
+      link : 'https://www.notion-status.com',
       atlassian: true
     };
   }
