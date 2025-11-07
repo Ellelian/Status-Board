@@ -1,42 +1,81 @@
 <!DOCTYPE html>
 <html lang="fr">
-  
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>SaaS Status Board</title>
-  
-<style>
-  :root{--card-radius:14px;--shadow:0 2px 6px #0002;--bg:#f4f4f6;--ok:#4caf50;--minor:#ff9800;--major:#f44336;--loading:#9e9e9e;--text:#111}
-  body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:2rem}
-  h1{margin-top:0;font-size:2.2rem}
-  
-    /* ————— NOUVEAU  : petit formulaire ————— */
-  form#addForm{display:flex;flex-wrap:wrap;gap:.5rem;margin:1rem 0 1.2rem}
-  form#addForm input{padding:.45rem .65rem;border:1px solid #ccc;border-radius:6px;font:inherit}
-  form#addForm button{padding:.45rem .9rem;border:0;border-radius:6px;background:#1976d2;color:#fff;font-weight:600;cursor:pointer}
-  form#addForm button:hover{filter:brightness(1.1)}
-  
-  #timestamp{margin-bottom:1.5rem;font-size:.9rem;color:#555}
-  #grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
-  .card{background:#fff;border-radius:var(--card-radius);box-shadow:var(--shadow);padding:1rem 1.2rem;text-decoration:none;display:flex;flex-direction:column;gap:.35rem;transition:transform .15s}
-  .card:hover{transform:translateY(-2px)}
-  .card.loading{border-left:8px solid var(--loading)}
-  .card.ok{border-left:8px solid var(--ok)}
-  .card.minor{border-left:8px solid var(--minor)}
-  .card.major{border-left:8px solid var(--major)}
-  .service-name{font-weight:600;text-transform:capitalize}
-  .status-row{display:flex;align-items:center;gap:.4rem}
-  .icon{font-size:1.1rem}
-  .incident-title{font-size:.85rem;color:#333;line-height:1.2}
-</style>
-  
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SaaS Status Board</title>
+  <style>
+    :root{
+      --card-radius:14px;
+      --shadow:0 2px 6px #0002;
+      --bg:#f4f4f6;
+      --ok:#4caf50;
+      --minor:#ff9800;
+      --major:#f44336;
+      --loading:#9e9e9e;
+      --text:#111
+    }
+    body{
+      margin:0;
+      font-family:system-ui,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      padding:2rem
+    }
+    h1{margin-top:0;font-size:2.2rem}
+    form#addForm{
+      display:flex;
+      flex-wrap:wrap;
+      gap:.5rem;
+      margin:1rem 0 1.2rem
+    }
+    form#addForm input{
+      padding:.45rem .65rem;
+      border:1px solid #ccc;
+      border-radius:6px;
+      font:inherit
+    }
+    form#addForm button{
+      padding:.45rem .9rem;
+      border:0;
+      border-radius:6px;
+      background:#1976d2;
+      color:#fff;
+      font-weight:600;
+      cursor:pointer
+    }
+    form#addForm button:hover{filter:brightness(1.1)}
+    #timestamp{margin-bottom:1.5rem;font-size:.9rem;color:#555}
+    #grid{
+      display:grid;
+      gap:1rem;
+      grid-template-columns:repeat(auto-fill,minmax(210px,1fr))
+    }
+    .card{
+      background:#fff;
+      border-radius:var(--card-radius);
+      box-shadow:var(--shadow);
+      padding:1rem 1.2rem;
+      text-decoration:none;
+      display:flex;
+      flex-direction:column;
+      gap:.35rem;
+      transition:transform .15s
+    }
+    .card:hover{transform:translateY(-2px)}
+    .card.loading{border-left:8px solid var(--loading)}
+    .card.ok{border-left:8px solid var(--ok)}
+    .card.minor{border-left:8px solid var(--minor)}
+    .card.major{border-left:8px solid var(--major)}
+    .service-name{font-weight:600;text-transform:capitalize}
+    .status-row{display:flex;align-items:center;gap:.4rem}
+    .icon{font-size:1.1rem}
+    .incident-title{font-size:.85rem;color:#333;line-height:1.2}
+  </style>
 </head>
-  
 <body>
 <h1>Status en direct</h1>
 
-<!-- ────────── formulaire d’ajout ──────────-->
 <form id="addForm">
   <input id="srvName" placeholder="Nom du service" required style="flex:1 1 110px">
   <input id="srvUrl"  placeholder="URL publique de la page de statut" required style="flex:2 1 260px">
@@ -48,9 +87,41 @@
 
 <script defer>
 /************************************************************
- *  1.  CONFIG « d’usine »  (tes entrées statiques)
+ *  CONSTANTES / CONFIG
  ************************************************************/
-const pages={
+const CORS_PROXY = 'https://corsproxy.io/?';
+
+/* connaissances spécifiques de certains services */
+const SPECIAL_STATUS = {
+  // Notion : le vrai status est sur notion-status.com
+  'status.notion.so': {
+    api: 'https://www.notion-status.com/api/v2/summary.json',
+    atlassian: true
+  },
+  'notion-status.com': {
+    api: 'https://notion-status.com/api/v2/summary.json',
+    atlassian: true
+  },
+  'www.notion-status.com': {
+    api: 'https://www.notion-status.com/api/v2/summary.json',
+    atlassian: true
+  },
+  // HighLevel
+  'status.gohighlevel.com': {
+    api: 'https://api.pulsetic.com/public/status/status.gohighlevel.com',
+    pulsetic: true,
+    method: 'POST'
+  },
+  // Pipedrive (SorryApp)
+  'status.pipedrive.com': {
+    api: 'https://status.pipedrive.com',
+    sorry: true,
+    cors: true
+  }
+};
+
+/* config d'usine (statique) */
+const pages = {
   activecampaign:{api:'https://status.activecampaign.com/api/v2/summary.json',link:'https://status.activecampaign.com'},
   webinarjam    :{api:'https://status.webinarjam.com/api/v2/summary.json',link:'https://status.webinarjam.com'},
   twilio        :{api:'https://status.twilio.com/api/v2/summary.json',link:'https://status.twilio.com'},
@@ -60,7 +131,8 @@ const pages={
   typeform      :{api:'https://status.typeform.com/api/v2/summary.json',link:'https://status.typeform.com'},
   calendly      :{api:'https://www.calendlystatus.com/api/v2/summary.json',link:'https://www.calendlystatus.com'},
   webflow       :{api:'https://status.webflow.com/api/v2/summary.json',link:'https://status.webflow.com'},
-  notion        :{api:'https://www.notion-status.com/api/v2/summary.json',link:'https://www.notion-status.com'},
+  // ici on met directement le bon domaine pour Notion
+  notion        :{api:'https://www.notion-status.com/api/v2/summary.json',link:'https://www.notion-status.com',atlassian:true},
   zapier        :{api:'https://status.zapier.com/api/v2/summary.json',link:'https://status.zapier.com'},
   clicksend     :{api:'https://status.clicksend.com/api/v2/summary.json',link:'https://status.clicksend.com'},
   leadpages     :{api:'https://status.leadpages.com/api/v2/summary.json',link:'https://status.leadpages.com'},
@@ -71,288 +143,210 @@ const pages={
   gohighlevel   :{api:'https://api.pulsetic.com/public/status/status.gohighlevel.com',link:'https://status.gohighlevel.com',pulsetic:true},
 
   pipedrive     :{api:'https://status.pipedrive.com',link:'https://status.pipedrive.com',sorry:true,cors:true},
-  
+
   gworkspace    :{api:'https://www.google.com/appsstatus/dashboard/incidents.json',link:'https://www.google.com/appsstatus/dashboard',cors:true,google:true},
   gcloud        :{api:'https://status.cloud.google.com/incidents.json',link:'https://status.cloud.google.com',cors:true,google:true}
 };
-  
-/************************************************************
- *  2.  SERVICES AJOUTÉS PAR L’UTILISATEUR (persistance)
- ************************************************************/
+
+// on fusionne avec ce que l'utilisateur avait ajouté
 Object.assign(pages, JSON.parse(localStorage.getItem('extraPages')||'{}'));
 
 /************************************************************
- *  3.  UTILITAIRES
+ *  UTILITAIRES GÉNÉRAUX
  ************************************************************/
-const cors=u=>`https://corsproxy.io/?${encodeURIComponent(u)}`;
+const okWords    = ['none','ok','operational','nostatus','up'];
+const minorWords = ['minor','maintenance','degraded_performance','partial_outage','warning','partial'];
+const majorWords = ['major','critical','major_outage','majoroutage'];
+const closedWords= ['resolved','completed','closed','fixed'];
 
-/******** HELPERS ********/
-const okWords=['none','ok','operational','nostatus','up'];
-const minorWords=['minor','maintenance','degraded_performance','partial_outage','warning','partial'];
-const majorWords=['major','critical','major_outage','majoroutage'];
-const closedWords=['resolved','completed','closed','fixed'];
-function normalize(x){return (x||'').toString().toLowerCase();}
-function map(ind){const n=normalize(ind);if(okWords.includes(n))return{cls:'ok',lab:'ok',ico:'✅'};if(minorWords.includes(n))return{cls:'minor',lab:'incident',ico:'⚠️'};if(majorWords.includes(n))return{cls:'major',lab:'incident',ico:'❌'};return{cls:'minor',lab:n||'unknown',ico:'❓'};}
-function ago(t){const s=Math.floor((Date.now()-t)/1000);if(s<60)return s+'s';const m=Math.floor(s/60);if(m<60)return m+' min';return Math.floor(m/60)+' h';}
+function normalize(x){ return (x||'').toString().toLowerCase(); }
+function map(ind){
+  const n = normalize(ind);
+  if (okWords.includes(n))    return {cls:'ok',lab:'ok',ico:'✅'};
+  if (minorWords.includes(n)) return {cls:'minor',lab:'incident',ico:'⚠️'};
+  if (majorWords.includes(n)) return {cls:'major',lab:'incident',ico:'❌'};
+  return {cls:'minor',lab:n||'unknown',ico:'❓'};
+}
+function ago(t){
+  const s = Math.floor((Date.now()-t)/1000);
+  if (s<60) return s+'s';
+  const m = Math.floor(s/60);
+  if (m<60) return m+' min';
+  return Math.floor(m/60)+' h';
+}
 
-/******** SorryApp parser (status.pipedrive.com & co) ********/
-  
+function cors(u){ return CORS_PROXY + encodeURIComponent(u); }
+
+async function fetchJSONWithFallback(url, method='GET'){
+  // direct
+  try{
+    const r = await fetch(url, { method });
+    if (r.ok) return await r.json();
+  }catch(_){}
+  // proxy
+  try{
+    const r = await fetch(cors(url), { method });
+    if (r.ok) return await r.json();
+  }catch(_){}
+  throw new Error('No JSON at ' + url);
+}
+
+async function fetchHTMLViaProxy(url){
+  const r = await fetch(cors(url));
+  return await r.text();
+}
+
+/******** SorryApp parser ********/
 function parseSorry(html) {
-  // a.  All-green banner  («All systems are go» ou «operational»)
-  if (/All[\s\u00a0]+systems[\s\u00a0]+(?:are[\s\u00a0]+)?(?:go|operational)/i
-      .test(html))
-      return { ind:'ok' };
+  if (/All[\s\u00a0]+systems[\s\u00a0]+(?:are[\s\u00a0]+)?(?:go|operational)/i.test(html))
+    return { ind:'ok' };
 
-  // b.  Un <section class="notice notice--open …"> signale un incident actif
   const sect = html.match(/<section[^>]*\bnotice--open\b[^>]*>([\s\S]*?)<\/section>/i);
-  if (!sect) return { ind:'ok' };           // rien d'ouvert → tout va bien
+  if (!sect) return { ind:'ok' };
 
-  //   ▸ titre
   const mTitle = sect[1].match(/<h3[^>]*class="notice__title"[^>]*>([^<]+)/i);
   const title  = mTitle ? mTitle[1].trim() : '';
-
-  //   ▸ gravité : 'major' / 'critical' → rouge, sinon orange
-  const ind = /notice__state--(?:critical|major)/i.test(sect[1]) ? 'major' : 'minor';
+  const ind    = /notice__state--(?:critical|major)/i.test(sect[1]) ? 'major' : 'minor';
 
   return { ind, title };
 }
 
 /************************************************************
- *  4.  AUTO‑DETECTION d’un endpoint JSON à partir d’une URL
- *      (heuristique simple ; complète‑la au fil du temps)
+ *  AUTO-DETECTION AMÉLIORÉE
  ************************************************************/
-  
 async function autoDetect(pageURL){
   const url    = new URL(pageURL);
-  const origin = url.origin;      // ex. https://status.notion.so
-  const host   = url.hostname;    // ex. status.notion.so
+  const origin = url.origin;
+  const host   = url.hostname;
 
-  console.log('[detect] ▶', pageURL);
-
-  /* ───────────────────────────────
-   * 0. cas “alias” connus
-   * ─────────────────────────────── */
-
-  // Notion a aussi un domaine miroir (notion-status.com) qui ne donne pas le JSON
-  if (host === 'notion-status.com' || host === 'www.notion-status.com') {
+  // 0. cas connus
+  if (SPECIAL_STATUS[host]) {
     return {
-      api  : origin + '/api/v2/summary.json',   // ← on reste sur le bon domaine
-      link : pageURL,
-      atlassian: true
-      // (tu peux ajouter cors:true si vraiment tu vois un blocage CORS)
+      api: SPECIAL_STATUS[host].api,
+      link: pageURL,
+      ...SPECIAL_STATUS[host]
     };
   }
 
-  if (host === 'status.notion.so') {
-    return {
-      api  : 'https://www.notion-status.com/api/v2/summary.json',
-      link : 'https://www.notion-status.com',
-      atlassian: true
-    };
-  }
-
-  // Linear a déjà fait le coup aussi
-  if (host === 'status.linear.app') {
-    return {
-      api  : 'https://linearstatus.com/api/v2/summary.json',
-      link : pageURL,
-      atlassian: true
-    };
-  }
-
-  // HighLevel : la page HTML est pulsetic, mais l’API est ailleurs
-  if (host === 'status.gohighlevel.com') {
-    return {
-      api    : 'https://api.pulsetic.com/public/status/status.gohighlevel.com',
-      link   : pageURL,
-      pulsetic: true,
-      method : 'POST'
-    };
-  }
-
-  // Pipedrive est en SorryApp
-  if (host === 'status.pipedrive.com') {
-    return {
-      api   : origin,
-      link  : pageURL,
-      sorry : true,
-      cors  : true
-    };
-  }
-
-  /* ───────────────────────────────
-   * 1. cas Google
-   * ─────────────────────────────── */
-  if (/status\.cloud\.google\.com/.test(origin)) {
-    return {
-      api   : 'https://status.cloud.google.com/incidents.json',
-      link  : pageURL,
-      google: true,
-      cors  : true
-    };
-  }
-
-  if (/appsstatus\/dashboard/.test(url.pathname)) {
-    return {
-      api   : 'https://www.google.com/appsstatus/dashboard/incidents.json',
-      link  : pageURL,
-      google: true,
-      cors  : true
-    };
-  }
-
-  /* ───────────────────────────────
-   * 2. sondes JSON “classiques”
-   * ─────────────────────────────── */
-  const probes = [
+  // 1. liste de candidats
+  const candidates = [
     { api: origin + '/api/v2/summary.json', flavour:'atlassian' },
     { api: origin + '/summary.json',        flavour:'instatus'  },
-    { api: `https://api.pulsetic.com/public/status/${host}`,
-      flavour:'pulsetic',
-      method:'POST'
-    }
+    { api: `https://api.pulsetic.com/public/status/${host}`, flavour:'pulsetic', method:'POST' }
   ];
 
-  // 3. tentative directe
-  for (const p of probes){
-    console.log('   probing', p.api);
-    try{
-      const r = await fetch(p.api, {
-        method: p.method || 'GET',
-        mode  : 'cors'
-      });
-      if (!r.ok){
-        console.log('      ⇢ HTTP', r.status);
-        continue;
-      }
-      await r.clone().json();
-      console.log('      ⇢ OK direct');
-      return {
-        api   : p.api,
-        link  : pageURL,
-        method: p.method,
-        [p.flavour]: true
-      };
-    }catch(e){
-      console.log('      ⇢ pas JSON ou CORS');
-    }
-  }
-
-  // 4. tentative via proxy
-  for (const p of probes){
-    try{
-      const r = await fetch(
-        `https://corsproxy.io/?${encodeURIComponent(p.api)}`,
-        { method: p.method || 'GET' }
-      );
-      if (!r.ok){
-        console.log('      ⇠ proxy HTTP', r.status);
-        continue;
-      }
-      await r.clone().json();
-      console.log(`      ⇠ OK via proxy (${p.flavour})`);
-      return {
-        api   : p.api,
-        link  : pageURL,
-        cors  : true,
-        method: p.method,
-        [p.flavour]: true
-      };
-    }catch(e){
-      // on passe au suivant
-    }
-  }
-
-  /* ───────────────────────────────
-   * 5. fallback HTML (SorryApp / pulsetic)
-   * ─────────────────────────────── */
-  let html = '';
-  let code = 0;
-  try{
-    const r = await fetch(
-      `https://corsproxy.io/?${encodeURIComponent(origin)}`
+  // variante sans "status."
+  const nakedHost = host.replace(/^status\./, '');
+  if (nakedHost !== host) {
+    const nakedOrigin = `${url.protocol}//${nakedHost}`;
+    candidates.push(
+      { api: nakedOrigin + '/api/v2/summary.json', flavour:'atlassian' },
+      { api: nakedOrigin + '/summary.json',        flavour:'instatus'  }
     );
-    code = r.status;
-    html = await r.text();
-  }catch(e){
-    // pas grave, on tente quand même la détection
   }
 
-  // SorryApp détecté ou HTML inaccessible → on force le mode sorry
-  if (code >= 400 || /notice--open|sorry-app/i.test(html)) {
+  // 2. essayer les candidats en JSON
+  for (const c of candidates) {
+    try {
+      await fetchJSONWithFallback(c.api, c.method);
+      return {
+        api: c.api,
+        link: pageURL,
+        method: c.method,
+        [c.flavour]: true
+      };
+    } catch(_) {}
+  }
+
+  // 3. sniff HTML
+  let html = '';
+  try {
+    html = await fetchHTMLViaProxy(origin);
+  } catch(_) {}
+
+  // Sorry
+  if (/notice--open|sorry-app/i.test(html)) {
     return {
-      api   : origin,
-      link  : pageURL,
-      sorry : true,
-      cors  : true
+      api: origin,
+      link: pageURL,
+      sorry: true,
+      cors: true
     };
   }
 
-  // Certaines pages pulsetic montent un app.js
-  if (/js\/app\./i.test(html) && !/pulsetic\.com/.test(origin)) {
+  // Statuspage embarqué
+  if (/statuspage\.io/i.test(html) || /All systems operational/i.test(html)) {
     return {
-      api    : `https://api.pulsetic.com/public/status/${host}`,
-      link   : pageURL,
-      pulsetic: true
+      api: origin + '/api/v2/summary.json',
+      link: pageURL,
+      atlassian: true,
+      cors: true
     };
   }
 
-  // vraiment rien trouvé
-  throw Error('Impossible de trouver un endpoint JSON.');
+  // pulsetic
+  if (/pulsetic/i.test(html)) {
+    return {
+      api: `https://api.pulsetic.com/public/status/${host}`,
+      link: pageURL,
+      pulsetic: true,
+      method: 'POST'
+    };
+  }
+
+  throw new Error('Impossible de déterminer le flux JSON.');
 }
 
 /************************************************************
- *  5.  FORMULAIRE : ajout d’un service à la volée
+ *  FORMULAIRE D’AJOUT
  ************************************************************/
 document.getElementById('addForm').addEventListener('submit', async e=>{
   e.preventDefault();
-
   const rawName = srvName.value.trim();
   const key     = rawName.toLowerCase().replace(/\s+/g,'');
   const pageURL = srvUrl.value.trim();
 
-  if(!rawName || !pageURL) return;
-  if(pages[key]) return alert('Ce nom est déjà utilisé.');
+  if (!rawName || !pageURL) return;
+  if (pages[key]) return alert('Ce nom est déjà utilisé.');
 
-  try{
-     const cfg = await autoDetect(pageURL);
-     cfg.link  = pageURL;          // le lien cliquable dans la tuile
-     pages[key]= cfg;              // ajoute au tableau en mémoire
+  try {
+    const cfg = await autoDetect(pageURL);
+    cfg.link  = pageURL;
+    pages[key]= cfg;
 
-     /* — sauve dans localStorage pour la prochaine session — */
-     const extra = JSON.parse(localStorage.getItem('extraPages')||'{}');
-     extra[key]  = cfg;
-     localStorage.setItem('extraPages', JSON.stringify(extra));
+    const extra = JSON.parse(localStorage.getItem('extraPages')||'{}');
+    extra[key]  = cfg;
+    localStorage.setItem('extraPages', JSON.stringify(extra));
 
-     refresh();        // redessine immédiatement
-     addForm.reset();
-  }catch(err){
-     alert('Impossible de déterminer le flux JSON.\nTu peux l’ajouter à la main !');
+    refresh();
+    addForm.reset();
+  } catch(err) {
+    alert('Impossible de déterminer le flux JSON.\nTu peux l’ajouter à la main !');
   }
 });
 
 /************************************************************
- *  6.  TON CODE INITIAL (fetch, render, tick, etc.)
- *      ────────────────────────────────────────────────────
- *      Il reste identique – ne change rien ci‑dessous,
- *      c’est lui qui profite des nouveaux services.
+ *  FETCH / RENDER
  ************************************************************/
-  
-/******** NOTIFY ********/
-let prev={},first=true;function notify(name,cls){if(Notification.permission!=='granted'||first)return;const b=prev[name];if(b&&b!==cls&&cls!=='ok')new Notification(`${name}: ${cls}`);prev[name]=cls;}
+let prev = {}, first = true;
+function notify(name, cls){
+  if (Notification.permission!=='granted' || first) return;
+  const b = prev[name];
+  if (b && b!==cls && cls!=='ok') new Notification(`${name}: ${cls}`);
+  prev[name] = cls;
+}
 
-/******** FETCH ********/
-async function get(name, cfg) {
+async function get(name, cfg){
   try {
-    // 1. SorryApp (pipedrive, etc.)
+    // 1. SorryApp
     if (cfg.sorry) {
       const html = await fetch(cfg.cors ? cors(cfg.api) : cfg.api).then(r => r.text());
       return parseSorry(html);
     }
 
-    // 2. Pulsetic (obligé de faire un POST)
+    // 2. Pulsetic
     if (cfg.pulsetic) {
-      const raw  = await fetch(cfg.api, { method: cfg.method || 'POST' }).then(r => r.json());
+      const raw  = await fetchJSONWithFallback(cfg.api, cfg.method || 'POST');
       const page = (Array.isArray(raw) ? raw[0]?.data : raw)?.data ?? raw;
 
       let ind   = 'ok';
@@ -376,10 +370,9 @@ async function get(name, cfg) {
       return { ind, title };
     }
 
-    // 3. Google (cloud / workspace) : on garde ce qu’on a mis
+    // 3. Google
     if (cfg.google) {
-      const r   = await fetch( cors(cfg.api) );
-      const arr = await r.json();
+      const arr = await fetchJSONWithFallback(cfg.api);
       const hasOpen = arr.some(inc => {
         const s = (inc.status || inc.most_recent_update?.status || '').toLowerCase();
         return !/available|resolved|service restored|completed/.test(s);
@@ -387,35 +380,9 @@ async function get(name, cfg) {
       return { ind: hasOpen ? 'minor' : 'ok' };
     }
 
-    // 4. Tous les autres : ON PASSE D’ABORD PAR LE PROXY
-    let data;
-    try {
-      data = await fetch( cors(cfg.api) ).then(r => r.json());
-    } catch (e) {
-      // si jamais le proxy tombe, on tente en direct
-      data = await fetch(cfg.api).then(r => r.json());
-    }
+    // 4. par défaut : JSON Atlassian / Instatus
+    const data = await fetchJSONWithFallback(cfg.api, cfg.method);
 
-    // 4.bis incident.io
-    if (cfg.incidentio) {
-      const s = data.summary || data;
-      if (s.ongoing_incidents?.length) {
-        const sev = s.ongoing_incidents[0].severity || 'minor';
-        return {
-          ind  : sev === 'major' ? 'major' : 'minor',
-          title: s.ongoing_incidents[0].name
-        };
-      }
-      if (s.affected_components?.length) {
-        return {
-          ind  : 'minor',
-          title: s.affected_components[0].component_name
-        };
-      }
-      return { ind:'ok' };
-    }
-
-    // 4.ter Instatus
     let ind   = data.status?.indicator || data.page?.status || 'ok';
     let title = data.status?.description || '';
 
@@ -428,18 +395,14 @@ async function get(name, cfg) {
       }
     }
 
-    // 4.quat Atlassian : composants
     if (ind === 'none' && Array.isArray(data.components)) {
-      const bad = data.components.find(c =>
-        minorWords.concat(majorWords).includes(normalize(c.status))
-      );
+      const bad = data.components.find(c => minorWords.concat(majorWords).includes(normalize(c.status)));
       if (bad) {
         ind   = minorWords.includes(normalize(bad.status)) ? 'minor' : 'major';
         title = bad.name;
       }
     }
 
-    // 4.cinq Atlassian : incidents
     if (Array.isArray(data.incidents)) {
       const active = data.incidents.find(i => !closedWords.includes(normalize(i.status || i.state)));
       if (active) {
@@ -453,45 +416,51 @@ async function get(name, cfg) {
 
   } catch (e) {
     console.warn('[get] erreur sur', name, e);
+
+    // petit downgrade si la page dit "all systems operational"
+    try {
+      if (cfg.link || cfg.api) {
+        const html = await fetchHTMLViaProxy(cfg.link || cfg.api);
+        if (/all systems operational/i.test(html)) {
+          return { ind:'ok', title:'' };
+        }
+      }
+    } catch(_) {}
+
     return { ind:'major', title:'API error' };
   }
 }
 
+/************************************************************
+ *  RENDER + TICK
+ ************************************************************/
+let lastRefresh = Date.now();
+const grid = document.getElementById('grid');
 
-/******** Horloge « il y a … » ********/
-let lastRefresh = Date.now();            // sera écrasé à chaque refresh
-
-function tick()
-{
+function tick(){
   document.getElementById('timestamp').textContent =
     'Mis à jour il y a ' + ago(lastRefresh);
 }
 
-/******** RENDER (parallel, ordre conservé) ********/
-const grid = document.getElementById('grid');
-
 async function refresh(){
   grid.innerHTML = '';
-
-  // a. on crée d’abord une tuile vide pour chaque service, déjà triée
-  const entries = Object.entries(pages).sort(([a],[b])=>a.localeCompare(b));
+  const entries = Object.entries(pages).sort(([a],[b]) => a.localeCompare(b));
   const placeholders = {};
 
   for (const [key] of entries){
     const div = document.createElement('a');
     div.className = 'card loading';
-    div.href  = pages[key].link;
+    div.href   = pages[key].link;
     div.target = '_blank';
     div.rel    = 'noopener';
     div.innerHTML = `
-        <span class="service-name">${key}</span>
-        <div class="status-row"><span class="icon">⏳</span>Chargement…</div>`;
+      <span class="service-name">${key}</span>
+      <div class="status-row"><span class="icon">⏳</span>Chargement…</div>`;
     grid.appendChild(div);
-    placeholders[key] = div;                // on retient le conteneur
+    placeholders[key] = div;
   }
 
-  // b. on lance les fetch en parallèle
-  await Promise.all(Object.entries(pages).map(async ([key,cfg])=>{
+  await Promise.all(entries.map(async ([key,cfg])=>{
     const {ind,title=''} = await get(key,cfg);
     const {cls,lab,ico}  = map(ind);
     notify(key,cls);
@@ -499,25 +468,25 @@ async function refresh(){
     const extra = title && cls!=='ok'
                   ? `<div class="incident-title">${title}</div>` : '';
 
-    placeholders[key].className = `card ${cls}`;     // couleur
+    placeholders[key].className = `card ${cls}`;
     placeholders[key].innerHTML = `
-        <span class="service-name">${key}</span>
-        <div class="status-row"><span class="icon">${ico}</span>${lab}</div>
-        ${extra}`;
+      <span class="service-name">${key}</span>
+      <div class="status-row"><span class="icon">${ico}</span>${lab}</div>
+      ${extra}`;
   }));
 
-  lastRefresh = Date.now();   // mémorise le moment du refresh
-  tick();                     // affiche immédiatement
+  lastRefresh = Date.now();
+  tick();
   first = false;
 }
 
-if(Notification.permission==='default')Notification.requestPermission();
+if (Notification.permission === 'default') {
+  Notification.requestPermission();
+}
 
-// démarrage
 refresh();
-setInterval(refresh, 300_000);   // on garde 5 min pour les données
-setInterval(tick,     1_000);    // mais on recalcule le compteur chaque seconde
+setInterval(refresh, 300_000);
+setInterval(tick,     1_000);
 </script>
-  
 </body>
 </html>
